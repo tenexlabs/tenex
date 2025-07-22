@@ -1,0 +1,15 @@
+{
+  "name": "tenex",
+  "version": "0.0.0",
+  "description": "A simple CLI tool",
+  "main": "index.js",
+  "bin": {
+    "tenex": "./bin/tenex.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["cli", "tool"],
+  "author": "",
+  "license": "Apache-2.0"
+}
