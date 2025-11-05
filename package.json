@@ -1,15 +1,36 @@
 {
   "name": "tenex",
-  "version": "0.0.0",
-  "description": "A simple CLI tool",
-  "main": "index.js",
+  "version": "0.0.1",
+  "description": "CLI tool to initialize Convex projects with TanStack Start template and Cursor rules",
   "bin": {
-    "tenex": "./bin/tenex.js"
+    "tenex": "./bin/cli.ts"
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["cli", "tool"],
+  "keywords": [
+    "cli",
+    "convex",
+    "tanstack-start",
+    "tanstack",
+    "cursor",
+    "scaffold",
+    "template",
+    "init"
+  ],
   "author": "",
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "dependencies": {
+    "tsx": "^4.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "files": [
+    "bin/cli.ts",
+    "tsconfig.json",
+    "README.md",
+    "LICENSE"
+  ]
 }
