@@ -1,131 +1,80 @@
-#!/usr/bin/env -S npx tsx
+#!/usr/bin/env -S npx --yes tsx
 
-import { spawn, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { spawn } from 'child_process';
+import * as p from '@clack/prompts';
+import { cancel, isCancel } from '@clack/prompts';
 
 const args = process.argv.slice(2);
 const command = args[0];
 
-// ANSI color codes
-const GRAY = '\x1b[90m';
-const RESET = '\x1b[0m';
 
-// Helper function to prompt for user input with default value shown as placeholder
-function prompt(question: string, defaultValue: string = ''): Promise<string> {
-  return new Promise((resolve) => {
-    // Write the prompt with gray placeholder
-    const placeholder = defaultValue ? GRAY + defaultValue + RESET : '';
-    process.stdout.write(`${question}: ${placeholder}`);
-    
-    let input = '';
-    let showingPlaceholder = defaultValue !== '';
-    
-    // Save original raw mode state
-    const wasRaw = process.stdin.isRaw;
-    
-    // Resume stdin if it was paused
-    if (process.stdin.isPaused()) {
-      process.stdin.resume();
+// Helper function to recursively copy a directory
+function copyDirectory(src: string, dest: string): void {
+  // Create destination directory if it doesn't exist
+  if (!fs.existsSync(dest)) {
+    fs.mkdirSync(dest, { recursive: true });
+  }
+
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const destPath = path.join(dest, entry.name);
+
+    if (entry.isDirectory()) {
+      copyDirectory(srcPath, destPath);
+    } else {
+      fs.copyFileSync(srcPath, destPath);
     }
-    
-    // Set raw mode to capture individual keystrokes
-    if (process.stdin.isTTY) {
-      process.stdin.setRawMode(true);
-    }
-    
-    // Cleanup function
-    const cleanup = () => {
-      process.stdin.removeListener('data', onData);
-      if (process.stdin.isTTY) {
-        process.stdin.setRawMode(wasRaw);
-      }
-      // Pause stdin to prevent it from staying open
-      if (!process.stdin.isPaused()) {
-        process.stdin.pause();
-      }
-    };
-    
-    // Handle data events
-    const onData = (data: Buffer) => {
-      const char = data.toString();
-      
-      // Handle Enter/Return
-      if (char === '\r' || char === '\n') {
-        cleanup();
-        process.stdout.write('\n');
-        resolve(input || defaultValue);
-        return;
-      }
-      
-      // Handle backspace/delete
-      if (char === '\b' || char === '\x7f' || char === '\x08') {
-        if (input.length > 0) {
-          input = input.slice(0, -1);
-          process.stdout.write('\b \b');
-        } else if (showingPlaceholder) {
-          // Clear placeholder
-          showingPlaceholder = false;
-          // Erase placeholder text by moving back, writing spaces, moving back again
-          const erase = '\b'.repeat(defaultValue.length) + ' '.repeat(defaultValue.length) + '\b'.repeat(defaultValue.length);
-          process.stdout.write(erase);
-        }
-        return;
-      }
-      
-      // Handle Ctrl+C
-      if (char === '\x03') {
-        cleanup();
-        process.stdout.write('\n');
-        process.exit(0);
-        return;
-      }
-      
-      // Handle printable characters
-      if (char.length === 1 && char.charCodeAt(0) >= 32 && char.charCodeAt(0) < 127) {
-        if (showingPlaceholder) {
-          // Clear placeholder first
-          showingPlaceholder = false;
-          const erase = '\b'.repeat(defaultValue.length) + ' '.repeat(defaultValue.length) + '\b'.repeat(defaultValue.length);
-          process.stdout.write(erase);
-        }
-        input += char;
-        process.stdout.write(char);
-      }
-    };
-    
-    process.stdin.on('data', onData);
-  });
+  }
 }
 
-interface RunCommandOptions {
-  cwd?: string;
-  [key: string]: unknown;
+// Helper function to sanitize project name (remove invalid characters)
+function sanitizeProjectName(name: string): string {
+  // Replace invalid characters with hyphens, remove leading/trailing hyphens
+  return name
+    .replace(/[^a-z0-9-]/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
 }
 
-// Helper function to run a command
-function runCommand(
-  command: string,
-  args: string[],
-  options: RunCommandOptions = {}
-): Promise<number> {
+// Helper function to find an available directory name
+function findAvailableDirectory(baseName: string, baseDir: string = process.cwd()): string {
+  let projectDir = path.join(baseDir, baseName);
+  let counter = 1;
+  
+  while (fs.existsSync(projectDir)) {
+    const newName = `${baseName}-${counter}`;
+    projectDir = path.join(baseDir, newName);
+    counter++;
+  }
+  
+  return path.basename(projectDir);
+}
+
+// Helper function to run npm install in a directory
+function runNpmInstall(cwd: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const childProcess: ChildProcess = spawn(command, args, {
+    console.log('\nInstalling dependencies...');
+    const npmProcess = spawn('npm', ['install'], {
+      cwd,
       stdio: 'inherit',
       shell: true,
-      ...options
     });
-    
-    childProcess.on('error', (error: Error) => {
-      reject(error);
-    });
-    
-    childProcess.on('exit', (code: number | null) => {
+
+    npmProcess.on('close', (code) => {
       if (code === 0) {
-        resolve(code);
+        resolve();
       } else {
-        reject(new Error(`Command failed with exit code ${code}`));
+        reject(new Error(`npm install failed with exit code ${code}`));
       }
+    });
+
+    npmProcess.on('error', (err) => {
+      reject(new Error(`Failed to run npm install: ${err.message}`));
     });
   });
 }
@@ -138,47 +87,148 @@ if (command === 'init') {
       let projectName = args[1];
       
       if (!projectName) {
-        projectName = await prompt('Project name', 'my-app');
-        if (!projectName) {
-          console.error('Project name is required');
-          process.exit(1);
+        const nameInput = await p.text({
+          message: 'Project name',
+          placeholder: 'my-app',
+          defaultValue: 'my-app',
+        });
+        
+        if (isCancel(nameInput) || !nameInput) {
+          cancel('Operation cancelled.');
+          process.exit(0);
+        }
+        projectName = nameInput;
+      }
+      
+      // Sanitize project name (auto-fix invalid characters)
+      const sanitizedName = sanitizeProjectName(projectName);
+      if (sanitizedName !== projectName) {
+        p.log.warn(`Project name sanitized: "${projectName}" → "${sanitizedName}"`);
+        projectName = sanitizedName;
+      }
+      
+      if (!projectName) {
+        console.error('Project name cannot be empty after sanitization');
+        process.exit(1);
+      }
+      
+      // Check if directory already exists and prompt user for action
+      let finalProjectName = projectName;
+      const baseProjectDir = path.join(process.cwd(), projectName);
+      
+      if (fs.existsSync(baseProjectDir)) {
+        const availableName = findAvailableDirectory(projectName);
+        const suggestedName = availableName !== projectName ? availableName : `${projectName}-1`;
+        
+        p.log.warn(`Directory "${projectName}" already exists`);
+        
+        const choice = await p.select({
+          message: 'What would you like to do?',
+          options: [
+            { value: 'different', label: `Use a different name (suggested: "${suggestedName}")` },
+            { value: 'overwrite', label: 'Overwrite the existing directory' },
+            { value: 'cancel', label: 'Cancel' },
+          ],
+          initialValue: 'different',
+        });
+        
+        if (isCancel(choice) || choice === 'cancel') {
+          cancel('Operation cancelled.');
+          process.exit(0);
+        } else if (choice === 'overwrite') {
+          // Remove the existing directory
+          p.log.info(`Removing existing directory "${projectName}"...`);
+          fs.rmSync(baseProjectDir, { recursive: true, force: true });
+          finalProjectName = projectName;
+        } else {
+          // Use different name - prompt for new name with suggested default
+          const nameInput = await p.text({
+            message: 'Enter a new project name',
+            placeholder: suggestedName,
+            defaultValue: suggestedName,
+          });
+          
+          if (isCancel(nameInput)) {
+            cancel('Operation cancelled.');
+            process.exit(0);
+          }
+          
+          let newName = nameInput || suggestedName;
+          if (newName.trim() === '') {
+            newName = suggestedName;
+          }
+          newName = sanitizeProjectName(newName);
+          if (!newName) {
+            p.log.error('Invalid project name');
+            process.exit(1);
+          }
+          // Check if this new name also exists
+          let newProjectDir = path.join(process.cwd(), newName);
+          if (fs.existsSync(newProjectDir)) {
+            // Automatically find available name if the entered one exists
+            finalProjectName = findAvailableDirectory(newName);
+            if (finalProjectName !== newName) {
+              p.log.warn(`Directory "${newName}" also exists, using "${finalProjectName}" instead`);
+            } else {
+              finalProjectName = newName;
+            }
+          } else {
+            finalProjectName = newName;
+          }
         }
       }
       
-      // Validate project name (basic check)
-      if (!/^[a-z0-9-]+$/i.test(projectName)) {
-        console.error('Project name can only contain letters, numbers, and hyphens');
-        process.exit(1);
+      const projectDir = path.join(process.cwd(), finalProjectName);
+      
+      // Get the template directory path (relative to this CLI file)
+      // process.argv[1] is the script file being executed (the CLI file)
+      // Resolve symlinks to get the actual file path (handles npm link)
+      let cliFilePath = process.argv[1];
+      try {
+        // Resolve all symlinks in the path (handles npm link which creates nested symlinks)
+        let resolved = fs.realpathSync(cliFilePath);
+        cliFilePath = resolved;
+      } catch (e) {
+        // If realpathSync fails, try manual symlink resolution
+        try {
+          while (fs.lstatSync(cliFilePath).isSymbolicLink()) {
+            const linkTarget = fs.readlinkSync(cliFilePath);
+            cliFilePath = path.isAbsolute(linkTarget) 
+              ? linkTarget 
+              : path.resolve(path.dirname(cliFilePath), linkTarget);
+          }
+        } catch (e2) {
+          // If symlink resolution fails, use the original path
+        }
+      }
+      const cliDir = path.dirname(cliFilePath);
+      const templateDir = path.join(cliDir, '..', 'templates', 'default');
+      
+      if (!fs.existsSync(templateDir)) {
+        throw new Error(`Template directory not found: ${templateDir}`);
       }
       
-      // Check if directory already exists
-      const projectDir = path.join(process.cwd(), projectName);
-      if (fs.existsSync(projectDir)) {
-        console.error(`Directory "${projectName}" already exists`);
-        process.exit(1);
-      }
+      // Copy template to project directory
+      p.log.info(`Creating convex project "${finalProjectName}" with tanstack-start template...`);
+      copyDirectory(templateDir, projectDir);
       
-      // Run: npm create convex@latest <project-name> -- -t tanstack-start
-      console.log(`Creating convex project "${projectName}" with tanstack-start template...`);
-      await runCommand('npm', ['create', 'convex@latest', projectName, '--', '-t', 'tanstack-start']);
-      
-      // Verify the directory was created and has package.json
-      if (!fs.existsSync(projectDir)) {
-        throw new Error(`Project directory not found: ${projectDir}`);
-      }
-      
+      // Update package.json with the new project name
       const packageJsonPath = path.join(projectDir, 'package.json');
       if (!fs.existsSync(packageJsonPath)) {
         throw new Error(`package.json not found in ${projectDir}`);
       }
       
-      // Run: npx vibe-rules install cursor (inside project directory)
-      console.log('Installing vibe-rules for cursor...');
-      await runCommand('npx', ['vibe-rules', 'install', 'cursor'], {
-        cwd: projectDir
-      });
+      const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+      packageJson.name = finalProjectName;
+      fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
       
-      console.log('\n✓ Setup complete!');
+      // Run npm install in the new project directory
+      await runNpmInstall(projectDir);
+      
+      p.log.success('Setup complete!');
+      console.log('\nNext steps:');
+      console.log(`  cd ${finalProjectName}`);
+      console.log('  npm run dev');
       
       // Ensure clean exit
       process.exit(0);

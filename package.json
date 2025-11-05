@@ -21,14 +21,17 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
+    "@clack/prompts": "^0.8.2",
     "tsx": "^4.7.0"
   },
   "devDependencies": {
+    "tsx": "^4.7.0",
     "@types/node": "^20.0.0",
     "typescript": "^5.0.0"
   },
   "files": [
     "bin/cli.ts",
+    "templates",
     "tsconfig.json",
     "README.md",
     "LICENSE"
