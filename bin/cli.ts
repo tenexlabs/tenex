@@ -1,9 +1,8 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S npx tsx
 
-const { spawn } = require('child_process');
-const fs = require('fs');
-const path = require('path');
-const readline = require('readline');
+import { spawn, ChildProcess } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -13,7 +12,7 @@ const GRAY = '\x1b[90m';
 const RESET = '\x1b[0m';
 
 // Helper function to prompt for user input with default value shown as placeholder
-function prompt(question, defaultValue = '') {
+function prompt(question: string, defaultValue: string = ''): Promise<string> {
   return new Promise((resolve) => {
     // Write the prompt with gray placeholder
     const placeholder = defaultValue ? GRAY + defaultValue + RESET : '';
@@ -48,7 +47,7 @@ function prompt(question, defaultValue = '') {
     };
     
     // Handle data events
-    const onData = (data) => {
+    const onData = (data: Buffer) => {
       const char = data.toString();
       
       // Handle Enter/Return
@@ -99,20 +98,29 @@ function prompt(question, defaultValue = '') {
   });
 }
 
+interface RunCommandOptions {
+  cwd?: string;
+  [key: string]: unknown;
+}
+
 // Helper function to run a command
-function runCommand(command, args, options = {}) {
+function runCommand(
+  command: string,
+  args: string[],
+  options: RunCommandOptions = {}
+): Promise<number> {
   return new Promise((resolve, reject) => {
-    const process = spawn(command, args, {
+    const childProcess: ChildProcess = spawn(command, args, {
       stdio: 'inherit',
       shell: true,
       ...options
     });
     
-    process.on('error', (error) => {
+    childProcess.on('error', (error: Error) => {
       reject(error);
     });
     
-    process.on('exit', (code) => {
+    childProcess.on('exit', (code: number | null) => {
       if (code === 0) {
         resolve(code);
       } else {
@@ -175,7 +183,8 @@ if (command === 'init') {
       // Ensure clean exit
       process.exit(0);
     } catch (error) {
-      console.error('Error:', error.message);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Error:', errorMessage);
       process.exit(1);
     }
   })();
@@ -187,3 +196,4 @@ if (command === 'init') {
   console.error('Usage: tenex init [project-name]');
   process.exit(1);
 }
+
