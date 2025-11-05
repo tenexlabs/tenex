@@ -1,6 +1,6 @@
 {
   "name": "tenex",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "CLI tool to initialize Convex projects with TanStack Start template and Cursor rules",
   "bin": {
     "tenex": "./bin/cli.ts"
