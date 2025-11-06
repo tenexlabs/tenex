@@ -4,11 +4,11 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "npx convex dev --once && concurrently -r npm:dev:web npm:dev:convex",
-    "dev:web": "vite dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "node ./node_modules/vite/bin/vite.js dev",
     "dev:ts": "tsc -b -w",
-    "dev:convex": "npx convex dev",
-    "build": "vite build && tsc --noEmit",
+    "dev:convex": "node ./node_modules/convex/bin/main.js dev",
+    "build": "node ./node_modules/vite/bin/vite.js build && tsc --noEmit",
     "start": "node .output/server/index.mjs",
     "format": "prettier --write .",
     "lint": "tsc && eslint .  --ext ts,tsx --report-unused-disable-directives --max-warnings 0"

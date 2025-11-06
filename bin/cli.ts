@@ -10,8 +10,117 @@ const args = process.argv.slice(2);
 const command = args[0];
 
 
-// Helper function to recursively copy a directory
-function copyDirectory(src: string, dest: string): void {
+// Load .gitignore-style patterns from a directory
+function loadIgnoreFile(rootDir: string) {
+  const ignorePath = path.join(rootDir, '.gitignore');
+  if (!fs.existsSync(ignorePath)) return null as const;
+
+  const raw = fs.readFileSync(ignorePath, 'utf-8');
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+
+  type Rule = {
+    negate: boolean;
+    dirOnly: boolean;
+    anchored: boolean;
+    hasGlob: boolean;
+    pattern: string; // normalized POSIX pattern without leading '!' or trailing '/'
+    parts: string[]; // split by '/'
+  };
+
+  const rules: Rule[] = lines.map((line) => {
+    let negate = false;
+    if (line.startsWith('!')) {
+      negate = true;
+      line = line.slice(1);
+    }
+    let dirOnly = false;
+    if (line.endsWith('/')) {
+      dirOnly = true;
+      line = line.slice(0, -1);
+    }
+    let anchored = false;
+    if (line.startsWith('/')) {
+      anchored = true;
+      line = line.slice(1);
+    }
+    // Normalize to POSIX separators
+    const pattern = line.replace(/\\/g, '/');
+    const parts = pattern.split('/').filter(Boolean);
+    const hasGlob = /[\*\?]/.test(pattern);
+    return { negate, dirOnly, anchored, hasGlob, pattern, parts };
+  });
+
+  const toPosix = (p: string) => p.split(path.sep).join('/');
+
+  const basename = (p: string) => {
+    const idx = p.lastIndexOf('/');
+    return idx >= 0 ? p.slice(idx + 1) : p;
+  };
+
+  const escapeRegex = (s: string) => s.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+
+  const makeNameRegex = (g: string) => new RegExp('^' + escapeRegex(g).replace(/\\\*/g, '[^/]*').replace(/\\\?/g, '[^/]') + '$');
+
+  function ruleMatches(rule: Rule, relPosix: string, isDir: boolean): boolean {
+    // Root normalize: remove leading './'
+    if (relPosix.startsWith('./')) relPosix = relPosix.slice(2);
+    // Simple name rule without glob and without '/': matches any segment name
+    if (!rule.anchored && !rule.hasGlob && rule.parts.length === 1) {
+      const name = rule.parts[0];
+      const relBase = basename(relPosix);
+      return relBase === name;
+    }
+
+    // Anchored path without globs: treat as path prefix for directories, exact for files
+    if (rule.anchored && !rule.hasGlob) {
+      const pat = rule.parts.join('/');
+      if (isDir) {
+        return relPosix === pat || relPosix.startsWith(pat + '/');
+      }
+      return relPosix === pat;
+    }
+
+    // Unanchored path without globs but with '/': match if any path segment sequence equals pattern
+    if (!rule.anchored && !rule.hasGlob && rule.parts.length > 1) {
+      // Check any occurrence of the pattern within rel path
+      const pat = '/' + rule.parts.join('/') + (isDir ? '/' : '');
+      const hay = '/' + relPosix + (isDir ? '/' : '');
+      return hay.includes(pat);
+    }
+
+    // Glob patterns
+    const pattern = rule.pattern;
+    const re = makeNameRegex(pattern);
+
+    if (rule.anchored || pattern.includes('/')) {
+      // Path-aware glob: test against the whole relative path
+      return re.test(relPosix);
+    } else {
+      // Name-only glob: test basename
+      return re.test(basename(relPosix));
+    }
+  }
+
+  const ignores = (relPath: string, isDir: boolean) => {
+    const relPosix = toPosix(relPath);
+    let ignored = false;
+    for (const rule of rules) {
+      const match = ruleMatches(rule, relPosix, isDir);
+      if (match) {
+        ignored = !rule.negate;
+      }
+    }
+    // If dirOnly flag exists on a matching rule, we already used it via isDir checks by caller
+    return ignored;
+  };
+
+  return { ignores };
+}
+
+// Helper function to recursively copy a directory honoring .gitignore in the template
+function copyDirectory(src: string, dest: string, rootSrc?: string, ignorer?: { ignores: (p: string, isDir: boolean) => boolean }): void {
+  if (!rootSrc) rootSrc = src;
+  if (!ignorer) ignorer = loadIgnoreFile(rootSrc) || undefined;
   // Create destination directory if it doesn't exist
   if (!fs.existsSync(dest)) {
     fs.mkdirSync(dest, { recursive: true });
@@ -22,9 +131,15 @@ function copyDirectory(src: string, dest: string): void {
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
+    const relPath = path.relative(rootSrc, srcPath);
+
+    // Skip if ignored by template's .gitignore rules
+    if (ignorer && ignorer.ignores(relPath, entry.isDirectory())) {
+      continue;
+    }
 
     if (entry.isDirectory()) {
-      copyDirectory(srcPath, destPath);
+      copyDirectory(srcPath, destPath, rootSrc, ignorer);
     } else {
       fs.copyFileSync(srcPath, destPath);
     }
@@ -246,4 +361,3 @@ if (command === 'init') {
   console.error('Usage: tenex init [project-name]');
   process.exit(1);
 }
-
