@@ -197,6 +197,7 @@ function convexCmdArgs(...args) {
   return { cmd: 'npx', args: ['convex', ...args] }
 }
 
+
 async function main() {
   const startPort = Number(process.env.VITE_DEV_PORT ?? 3000)
   const port = await findAvailablePort(startPort)
@@ -224,15 +225,50 @@ async function main() {
   const vite = fs.existsSync(localVite)
     ? spawnBg(process.execPath, [localVite, 'dev', '--host', host, '--port', String(port), '--strictPort'])
     : spawnBg('npx', ['vite', 'dev', '--host', host, '--port', String(port), '--strictPort'])
-  const convexBg = (() => {
-    const { cmd, args } = convexCmdArgs('dev')
-    return spawnBg(cmd, args)
-  })()
+  // Start Convex with piped stdio so we can detect readiness, while teeing output
+  const { cmd: convexCmd, args: convexArgs } = convexCmdArgs('dev')
+  const convexBg = spawn(convexCmd, convexArgs, {
+    stdio: ['inherit', 'pipe', 'pipe'],
+    shell: process.platform === 'win32',
+  })
+
+  // Tee Convex output to the console and detect readiness line
+  let convexReady = false
+  let convexEnvEnsurer = null
+  let envEnsurerSpawned = false
+  const ensureScript = path.join(__dirname, 'ensure-convex-env.mjs')
+  const readyRegex = /Convex functions ready/i
+  const spawnEnsurerOnce = () => {
+    if (envEnsurerSpawned) return
+    envEnsurerSpawned = true
+    console.log('[dev] Spawning Convex env ensure worker...')
+    convexEnvEnsurer = spawn(process.execPath, [ensureScript, siteUrl, envPath], {
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    })
+  }
+  const handleConvexData = (chunk) => {
+    const text = chunk.toString()
+    process.stdout.write(text)
+    if (!convexReady && readyRegex.test(text)) {
+      convexReady = true
+      // Spawn a separate process to ensure Convex env vars after Convex is up
+      spawnEnsurerOnce()
+    }
+  }
+  convexBg.stdout.on('data', handleConvexData)
+  convexBg.stderr.on('data', (d) => process.stderr.write(d))
+
+  // Fallback: if the ready line isn't observed (e.g. format changes), spawn after a short delay.
+  setTimeout(() => {
+    if (!envEnsurerSpawned) spawnEnsurerOnce()
+  }, 15000)
 
   const cleanExit = () => {
     vite.kill('SIGINT')
     convexBg.kill('SIGINT')
     envWatcher.close()
+    if (convexEnvEnsurer) convexEnvEnsurer.kill('SIGINT')
   }
   process.on('SIGINT', cleanExit)
   process.on('SIGTERM', cleanExit)

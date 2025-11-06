@@ -1,4 +1,4 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, useRouter } from '@tanstack/react-router'
 import { useMutation } from 'convex/react'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { convexQuery } from '@convex-dev/react-query'
@@ -9,6 +9,7 @@ export const Route = createFileRoute('/')({
 })
 
 function Home() {
+  const router = useRouter()
   const {
     data: { viewer, numbers },
   } = useSuspenseQuery(convexQuery(api.myFunctions.listNumbers, { count: 10 }))
@@ -21,7 +22,37 @@ function Home() {
         Convex + Tanstack Start
       </h1>
       <div className="flex flex-col gap-8 max-w-lg mx-auto">
-        <p>Welcome {viewer ?? 'Anonymous'}!</p>
+        {viewer ? (
+          <div className="flex flex-col gap-4">
+            <p>Welcome back, {viewer}!</p>
+            <div className="flex gap-2 justify-center">
+              <button
+                onClick={() => router.navigate({ to: '/dashboard' })}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors"
+              >
+                Go to Dashboard
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-4">
+            <p>Welcome! Please log in or sign up to continue.</p>
+            <div className="flex gap-2 justify-center">
+              <Link
+                to="/login"
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-center"
+              >
+                Log In
+              </Link>
+              <Link
+                to="/signup"
+                className="bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 px-4 py-2 rounded-md transition-colors text-center"
+              >
+                Sign Up
+              </Link>
+            </div>
+          </div>
+        )}
         <p>
           Click the button below and open this page in another window - this
           data is persisted in the Convex cloud database!
