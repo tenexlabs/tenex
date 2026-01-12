@@ -294,16 +294,17 @@ export const Route = createRootRouteWithContext<{
     ],
   }),
   beforeLoad: async (ctx) => {
-    // Only fetch auth during SSR (avoid a server roundtrip on every client navigation).
-    if (ctx.context.convexQueryClient.serverHttpClient) {
-      const token = await getAuth()
-      if (token) {
-        ctx.context.convexQueryClient.serverHttpClient.setAuth(token)
-      }
-      return { token }
+    const token = await getAuth()
+
+    // Authenticate SSR queries (the only time serverHttpClient exists).
+    if (token) {
+      ctx.context.convexQueryClient.serverHttpClient?.setAuth(token)
     }
 
-    return { token: null }
+    return {
+      isAuthenticated: !!token,
+      token,
+    }
   },
   notFoundComponent: () => <div>Route not found</div>,
   component: RootComponent,
@@ -574,14 +575,19 @@ function Signup() {
 }
 
 function dashboardRouteSource() {
-  return `import { createFileRoute, useRouter } from '@tanstack/react-router'
+  return `import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { convexQuery } from '@convex-dev/react-query'
 import { api } from '../../convex/_generated/api'
 import { authClient } from '~/lib/auth-client'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 export const Route = createFileRoute('/dashboard')({
+  beforeLoad: ({ context }) => {
+    if (!context.isAuthenticated) {
+      throw redirect({ to: '/login' })
+    }
+  },
   component: Dashboard,
 })
 
@@ -591,12 +597,6 @@ function Dashboard() {
   const { data: user, isLoading } = useQuery(
     convexQuery(api.auth.getCurrentUser, {}),
   )
-
-  useEffect(() => {
-    if (!isLoading && !user) {
-      router.navigate({ to: '/login' })
-    }
-  }, [user, isLoading, router])
 
   const handleLogout = async () => {
     setIsLoggingOut(true)
@@ -705,7 +705,9 @@ export const getCurrentUser = query({
   args: {},
   handler: async (ctx) => {
     try {
-      return await authComponent.getAuthUser(ctx)
+      const user = await authComponent.getAuthUser(ctx)
+      if (!user) return null
+      return { ...user, id: (user as any).userId ?? (user as any)._id }
     } catch {
       return null
     }
