@@ -1,12 +1,15 @@
 {
   "name": "tenex",
   "version": "0.0.2",
-  "description": "CLI tool to initialize Convex projects with TanStack Start template and Cursor rules",
+  "description": "Scaffold Convex + TanStack Start apps with add-ons (e.g. Better Auth)",
   "bin": {
-    "tenex": "./bin/cli.ts"
+    "tenex": "./dist/cli.js"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "npm run build && node ./dist/test/smoke.js",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "cli",
@@ -21,19 +24,16 @@
   "author": "",
   "license": "Apache-2.0",
   "dependencies": {
-    "@clack/prompts": "^0.8.2",
-    "tsx": "^4.7.0"
+    "@clack/prompts": "^0.8.2"
   },
   "devDependencies": {
-    "tsx": "^4.7.0",
     "@types/node": "^20.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.4.0"
   },
   "files": [
-    "bin/cli.ts",
-    "templates",
+    "dist",
     "tsconfig.json",
-    "README.md",
+    "package.json",
     "LICENSE"
   ]
 }
