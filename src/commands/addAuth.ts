@@ -93,16 +93,73 @@ function deriveConvexSiteUrl(convexUrl: string): string | undefined {
 }
 
 async function setEnvVars(projectDir: string) {
-  await run(
-    'npx',
-    ['convex', 'env', 'set', 'BETTER_AUTH_SECRET', generateBetterAuthSecret()],
-    {
-      cwd: projectDir,
-    },
+  const hasBetterAuthSecret = await convexEnvVarExists(
+    projectDir,
+    'BETTER_AUTH_SECRET',
   )
+  if (hasBetterAuthSecret) {
+    p.log.info('BETTER_AUTH_SECRET already set; leaving it unchanged')
+  } else {
+    await run(
+      'npx',
+      ['convex', 'env', 'set', 'BETTER_AUTH_SECRET', generateBetterAuthSecret()],
+      {
+        cwd: projectDir,
+      },
+    )
+  }
   await run('npx', ['convex', 'env', 'set', 'SITE_URL', 'http://localhost:3000'], {
     cwd: projectDir,
   })
+}
+
+async function convexEnvVarExists(projectDir: string, name: string) {
+  const { stdout } = await runCapture('npx', ['convex', 'env', 'list'], {
+    cwd: projectDir,
+  })
+  return new RegExp(`\\b${escapeRegExp(name)}\\b`).test(stdout)
+}
+
+async function runCapture(
+  cmd: string,
+  args: string[],
+  options: { cwd: string },
+): Promise<{ stdout: string; stderr: string }> {
+  return await new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, {
+      cwd: options.cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      shell: process.platform === 'win32',
+    })
+
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout?.setEncoding('utf8')
+    child.stderr?.setEncoding('utf8')
+
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk)
+    })
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk)
+    })
+
+    child.on('error', reject)
+    child.on('exit', (code, signal) => {
+      if (code === 0) return resolve({ stdout, stderr })
+
+      reject(
+        new Error(
+          `${cmd} ${args.join(' ')} exited with code ${code ?? 'null'} signal ${signal ?? 'null'}\n${stderr || stdout}`,
+        ),
+      )
+    })
+  })
+}
+
+function escapeRegExp(input: string) {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function isLocalConvexUrl(convexUrl: string): boolean {
