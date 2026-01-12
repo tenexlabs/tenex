@@ -27,6 +27,10 @@ export async function applyAuthAddon(projectDir: string) {
     path.join(routesDir, 'api', 'auth', '$.ts'),
     authProxyRouteSource(),
   )
+  await writeTextFileIfChanged(
+    path.join(srcDir, 'components', 'Navbar.tsx'),
+    navbarComponentSource(),
+  )
   await writeTextFileIfChanged(path.join(routesDir, 'login.tsx'), loginRouteSource())
   await writeTextFileIfChanged(path.join(routesDir, 'signup.tsx'), signupRouteSource())
   await writeTextFileIfChanged(
@@ -34,7 +38,7 @@ export async function applyAuthAddon(projectDir: string) {
     dashboardRouteSource(),
   )
 
-  await patchHomeRouteMaybe(path.join(routesDir, 'index.tsx'))
+  await writeTextFileIfChanged(path.join(routesDir, 'index.tsx'), landingPageRouteSource())
 
   await writeTextFileIfChanged(
     path.join(projectDir, 'convex', 'convex.config.ts'),
@@ -178,21 +182,143 @@ async function writeRootRoute(rootRoutePath: string) {
   await writeTextFileIfChanged(rootRoutePath, rootRouteSource())
 }
 
-async function patchHomeRouteMaybe(indexRoutePath: string) {
-  if (!(await pathExists(indexRoutePath))) return
-  const current = await readTextFile(indexRoutePath)
-  if (current.includes("to=\"/login\"") || current.includes("to='/login'")) return
+function navbarComponentSource() {
+  return `import { Link, useRouteContext, useLocation } from '@tanstack/react-router'
+import { authClient } from '~/lib/auth-client'
+import { useRouter } from '@tanstack/react-router'
+import { useState } from 'react'
 
-  if (!current.includes('Convex + Tanstack Start')) return
+export function Navbar() {
+  const router = useRouter()
+  const location = useLocation()
+  const context = useRouteContext({ from: '__root__' })
+  const isAuthenticated = context.isAuthenticated
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
+  const isOnDashboard = location.pathname === '/dashboard'
 
-  const updated = replaceOrThrow(
-    current,
-    "      <h1 className=\"text-4xl font-bold text-center\">\n        Convex + Tanstack Start\n      </h1>",
-    "      <h1 className=\"text-4xl font-bold text-center\">\n        Convex + Tanstack Start\n      </h1>\n\n      <div className=\"flex gap-2 justify-center\">\n        <Link\n          to=\"/login\"\n          className=\"bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md transition-colors text-center\"\n        >\n          Log In\n        </Link>\n        <Link\n          to=\"/signup\"\n          className=\"bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 px-4 py-2 rounded-md transition-colors text-center\"\n        >\n          Sign Up\n        </Link>\n        <Link\n          to=\"/dashboard\"\n          className=\"bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 px-4 py-2 rounded-md transition-colors text-center\"\n        >\n          Dashboard\n        </Link>\n      </div>",
-    'Could not find the home page h1 heading to insert auth links',
+  const handleLogout = async () => {
+    setIsLoggingOut(true)
+    try {
+      await authClient.signOut()
+      router.navigate({ to: '/' })
+    } finally {
+      setIsLoggingOut(false)
+    }
+  }
+
+  return (
+    <nav className="border-b border-neutral-800 bg-black">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center h-16">
+          <Link to="/" className="text-xl font-bold text-white">
+            Tenex App
+          </Link>
+
+          <div className="flex items-center gap-4">
+            {isAuthenticated ? (
+              <>
+                {!isOnDashboard && (
+                  <Link
+                    to="/dashboard"
+                    className="text-neutral-400 hover:text-white transition-colors"
+                  >
+                    Dashboard
+                  </Link>
+                )}
+                <button
+                  onClick={handleLogout}
+                  disabled={isLoggingOut}
+                  className="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-50 text-white px-4 py-2 rounded-md transition-colors text-sm"
+                >
+                  {isLoggingOut ? 'Logging out...' : 'Log Out'}
+                </button>
+              </>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  className="text-neutral-400 hover:text-white transition-colors"
+                >
+                  Log In
+                </Link>
+                <Link
+                  to="/signup"
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md transition-colors text-sm"
+                >
+                  Get Started
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </nav>
   )
+}
+`
+}
 
-  await writeTextFileIfChanged(indexRoutePath, updated)
+function landingPageRouteSource() {
+  return `import { createFileRoute, Link, useRouteContext } from '@tanstack/react-router'
+import { Navbar } from '~/components/Navbar'
+
+export const Route = createFileRoute('/')({
+  component: Home,
+})
+
+function Home() {
+  const context = useRouteContext({ from: '__root__' })
+  const isAuthenticated = context.isAuthenticated
+
+  return (
+    <div className="min-h-screen flex flex-col bg-black">
+      <Navbar />
+
+      <main className="flex-1 flex flex-col items-center justify-center px-4">
+        <div className="max-w-3xl mx-auto text-center">
+          <h1 className="text-5xl font-bold tracking-tight mb-6 text-white">
+            Build faster with <span className="text-red-500">Tenex</span>
+          </h1>
+          <p className="text-xl text-neutral-400 mb-8">
+            A modern full-stack starter powered by TanStack Start, Convex, and Better Auth.
+            Everything you need to ship your next project.
+          </p>
+
+          <div className="flex gap-4 justify-center">
+            {isAuthenticated ? (
+              <Link
+                to="/dashboard"
+                className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-md transition-colors text-lg font-medium"
+              >
+                Go to Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/signup"
+                  className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-md transition-colors text-lg font-medium"
+                >
+                  Get Started
+                </Link>
+                <Link
+                  to="/login"
+                  className="bg-neutral-800 hover:bg-neutral-700 text-white px-6 py-3 rounded-md transition-colors text-lg font-medium"
+                >
+                  Log In
+                </Link>
+              </>
+            )}
+          </div>
+        </div>
+      </main>
+
+      <footer className="py-6 text-center text-sm text-neutral-500">
+        Built with Tenex CLI
+      </footer>
+    </div>
+  )
+}
+`
 }
 
 function authClientSource() {
@@ -267,11 +393,14 @@ export const Route = createRootRouteWithContext<{
         content: 'width=device-width, initial-scale=1',
       },
       {
-        title: 'TanStack Start Starter',
+        title: 'Tenex App',
       },
     ],
     links: [
       { rel: 'stylesheet', href: appCss },
+      { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+      { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossOrigin: 'anonymous' },
+      { rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap' },
       {
         rel: 'apple-touch-icon',
         sizes: '180x180',
@@ -306,7 +435,7 @@ export const Route = createRootRouteWithContext<{
       token,
     }
   },
-  notFoundComponent: () => <div>Route not found</div>,
+  notFoundComponent: () => <div className="font-mono text-white bg-black min-h-screen flex items-center justify-center">Route not found</div>,
   component: RootComponent,
 })
 
@@ -331,7 +460,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       <head>
         <HeadContent />
       </head>
-      <body>
+      <body className="font-mono bg-black text-white">
         {children}
         <Scripts />
       </body>
@@ -345,6 +474,7 @@ function loginRouteSource() {
   return `import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { authClient } from '~/lib/auth-client'
 import { useState, type FormEvent } from 'react'
+import { Navbar } from '~/components/Navbar'
 
 export const Route = createFileRoute('/login')({
   component: Login,
@@ -381,67 +511,70 @@ function Login() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-8">
-      <div className="w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center mb-8">Log In</h1>
+    <div className="min-h-screen flex flex-col bg-black">
+      <Navbar />
+      <main className="flex-1 flex items-center justify-center p-8">
+        <div className="w-full max-w-md">
+          <h1 className="text-3xl font-bold text-center mb-8 text-white">Log In</h1>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {error && (
-            <div className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 p-3 rounded-md text-sm">
-              {error}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {error && (
+              <div className="bg-red-900/50 border border-red-600 text-red-200 p-3 rounded-md text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <label htmlFor="email" className="text-sm font-medium text-neutral-300">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="px-4 py-2 rounded-md border-2 bg-neutral-900 border-neutral-700 text-white focus:outline-none focus:border-red-500"
+                placeholder="you@example.com"
+              />
             </div>
-          )}
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="email" className="text-sm font-medium">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="px-4 py-2 rounded-md border-2 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 focus:outline-none focus:border-blue-500"
-              placeholder="you@example.com"
-            />
-          </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="password" className="text-sm font-medium text-neutral-300">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="px-4 py-2 rounded-md border-2 bg-neutral-900 border-neutral-700 text-white focus:outline-none focus:border-red-500"
+                placeholder="••••••••"
+              />
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="password" className="text-sm font-medium">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="px-4 py-2 rounded-md border-2 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 focus:outline-none focus:border-blue-500"
-              placeholder="••••••••"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium px-4 py-2 rounded-md transition-colors mt-2"
-          >
-            {isLoading ? 'Logging in...' : 'Log In'}
-          </button>
-
-          <p className="text-sm text-center mt-4">
-            Don't have an account?{' '}
-            <a
-              href="/signup"
-              className="text-blue-600 underline hover:no-underline"
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-md transition-colors mt-2"
             >
-              Sign up
-            </a>
-          </p>
-        </form>
-      </div>
-    </main>
+              {isLoading ? 'Logging in...' : 'Log In'}
+            </button>
+
+            <p className="text-sm text-center mt-4 text-neutral-400">
+              Don't have an account?{' '}
+              <a
+                href="/signup"
+                className="text-red-500 underline hover:no-underline"
+              >
+                Sign up
+              </a>
+            </p>
+          </form>
+        </div>
+      </main>
+    </div>
   )
 }
 `
@@ -451,6 +584,7 @@ function signupRouteSource() {
   return `import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { authClient } from '~/lib/auth-client'
 import { useState, type FormEvent } from 'react'
+import { Navbar } from '~/components/Navbar'
 
 export const Route = createFileRoute('/signup')({
   component: Signup,
@@ -489,98 +623,100 @@ function Signup() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-8">
-      <div className="w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center mb-8">Sign Up</h1>
+    <div className="min-h-screen flex flex-col bg-black">
+      <Navbar />
+      <main className="flex-1 flex items-center justify-center p-8">
+        <div className="w-full max-w-md">
+          <h1 className="text-3xl font-bold text-center mb-8 text-white">Sign Up</h1>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {error && (
-            <div className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 p-3 rounded-md text-sm">
-              {error}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            {error && (
+              <div className="bg-red-900/50 border border-red-600 text-red-200 p-3 rounded-md text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <label htmlFor="name" className="text-sm font-medium text-neutral-300">
+                Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="px-4 py-2 rounded-md border-2 bg-neutral-900 border-neutral-700 text-white focus:outline-none focus:border-red-500"
+                placeholder="Jane Doe"
+              />
             </div>
-          )}
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="name" className="text-sm font-medium">
-              Name
-            </label>
-            <input
-              id="name"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              className="px-4 py-2 rounded-md border-2 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 focus:outline-none focus:border-blue-500"
-              placeholder="Jane Doe"
-            />
-          </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="email" className="text-sm font-medium text-neutral-300">
+                Email
+              </label>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="px-4 py-2 rounded-md border-2 bg-neutral-900 border-neutral-700 text-white focus:outline-none focus:border-red-500"
+                placeholder="you@example.com"
+              />
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="email" className="text-sm font-medium">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="px-4 py-2 rounded-md border-2 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 focus:outline-none focus:border-blue-500"
-              placeholder="you@example.com"
-            />
-          </div>
+            <div className="flex flex-col gap-2">
+              <label htmlFor="password" className="text-sm font-medium text-neutral-300">
+                Password
+              </label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={8}
+                className="px-4 py-2 rounded-md border-2 bg-neutral-900 border-neutral-700 text-white focus:outline-none focus:border-red-500"
+                placeholder="••••••••"
+              />
+              <p className="text-xs text-neutral-500">
+                Password must be at least 8 characters long
+              </p>
+            </div>
 
-          <div className="flex flex-col gap-2">
-            <label htmlFor="password" className="text-sm font-medium">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-              className="px-4 py-2 rounded-md border-2 bg-white dark:bg-slate-800 border-slate-300 dark:border-slate-600 focus:outline-none focus:border-blue-500"
-              placeholder="••••••••"
-            />
-            <p className="text-xs text-slate-600 dark:text-slate-400">
-              Password must be at least 8 characters long
-            </p>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium px-4 py-2 rounded-md transition-colors mt-2"
-          >
-            {isLoading ? 'Creating account...' : 'Sign Up'}
-          </button>
-
-          <p className="text-sm text-center mt-4">
-            Already have an account?{' '}
-            <a
-              href="/login"
-              className="text-blue-600 underline hover:no-underline"
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="bg-red-600 hover:bg-red-700 disabled:bg-red-800 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-md transition-colors mt-2"
             >
-              Log in
-            </a>
-          </p>
-        </form>
-      </div>
-    </main>
+              {isLoading ? 'Creating account...' : 'Sign Up'}
+            </button>
+
+            <p className="text-sm text-center mt-4 text-neutral-400">
+              Already have an account?{' '}
+              <a
+                href="/login"
+                className="text-red-500 underline hover:no-underline"
+              >
+                Log in
+              </a>
+            </p>
+          </form>
+        </div>
+      </main>
+    </div>
   )
 }
 `
 }
 
 function dashboardRouteSource() {
-  return `import { createFileRoute, redirect, useRouter } from '@tanstack/react-router'
+  return `import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { convexQuery } from '@convex-dev/react-query'
 import { api } from '../../convex/_generated/api'
-import { authClient } from '~/lib/auth-client'
-import { useState } from 'react'
+import { Navbar } from '~/components/Navbar'
 
 export const Route = createFileRoute('/dashboard')({
   beforeLoad: ({ context }) => {
@@ -592,27 +728,18 @@ export const Route = createFileRoute('/dashboard')({
 })
 
 function Dashboard() {
-  const router = useRouter()
-  const [isLoggingOut, setIsLoggingOut] = useState(false)
   const { data: user, isLoading } = useQuery(
     convexQuery(api.auth.getCurrentUser, {}),
   )
 
-  const handleLogout = async () => {
-    setIsLoggingOut(true)
-    try {
-      await authClient.signOut()
-      router.navigate({ to: '/' })
-    } finally {
-      setIsLoggingOut(false)
-    }
-  }
-
   if (isLoading) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
-      </main>
+      <div className="min-h-screen flex flex-col bg-black">
+        <Navbar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-lg text-white">Loading...</div>
+        </main>
+      </div>
     )
   }
 
@@ -621,35 +748,29 @@ function Dashboard() {
   }
 
   return (
-    <main className="min-h-screen p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-4xl font-bold">Dashboard</h1>
-          <button
-            onClick={handleLogout}
-            disabled={isLoggingOut}
-            className="bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 disabled:opacity-50 px-4 py-2 rounded-md transition-colors"
-          >
-            {isLoggingOut ? 'Logging out...' : 'Log Out'}
-          </button>
-        </div>
+    <div className="min-h-screen flex flex-col bg-black">
+      <Navbar />
+      <main className="flex-1 p-8">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="text-4xl font-bold mb-8 text-white">Dashboard</h1>
 
-        <div className="bg-slate-100 dark:bg-slate-800 p-6 rounded-lg mb-8">
-          <h2 className="text-xl font-semibold mb-4">Welcome back!</h2>
-          <div className="flex flex-col gap-2">
-            <p className="text-sm">
-              <span className="font-medium">Name:</span> {user.name}
-            </p>
-            <p className="text-sm">
-              <span className="font-medium">Email:</span> {user.email}
-            </p>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              <span className="font-medium">User ID:</span> {user.id}
-            </p>
+          <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-lg">
+            <h2 className="text-xl font-semibold mb-4 text-white">Welcome back!</h2>
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-neutral-300">
+                <span className="font-medium text-white">Name:</span> {user.name}
+              </p>
+              <p className="text-sm text-neutral-300">
+                <span className="font-medium text-white">Email:</span> {user.email}
+              </p>
+              <p className="text-sm text-neutral-500">
+                <span className="font-medium text-neutral-400">User ID:</span> {user.id}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   )
 }
 `
