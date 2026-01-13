@@ -183,10 +183,17 @@ async function withConvexDevRunning<T>(
 ): Promise<T> {
   p.log.info('Starting Convex local backend (convex dev)...')
 
+  // Run `convex dev` non-interactively. When stdin is a TTY, Convex enables
+  // keyboard controls (raw mode) which can crash with `setRawMode EIO` on some
+  // setups (and it also conflicts with other commands we run in this process).
   const child = spawn('npx', ['convex', 'dev'], {
     cwd: projectDir,
-    stdio: 'inherit',
+    stdio: ['ignore', 'inherit', 'inherit'],
     shell: process.platform === 'win32',
+    env: {
+      ...process.env,
+      CI: process.env.CI ?? '1',
+    },
   })
 
   try {
@@ -244,28 +251,33 @@ async function canConnectTcp(host: string, port: number): Promise<boolean> {
 async function stopChildProcess(child: ChildProcess) {
   if (child.exitCode != null) return
 
+  const waitForExit = async (timeoutMs: number) => {
+    return await Promise.race([
+      onceExit(child).then(() => true),
+      sleep(timeoutMs).then(() => false),
+    ])
+  }
+
+  const tryKill = async (signal: NodeJS.Signals, timeoutMs: number) => {
+    try {
+      child.kill(signal)
+    } catch {
+      // Ignore.
+    }
+    return await waitForExit(timeoutMs)
+  }
+
   // Try to gracefully stop `convex dev`.
-  try {
-    child.kill('SIGINT')
-  } catch {
-    // Ignore.
+  if (process.platform !== 'win32') {
+    if (await tryKill('SIGINT', 10_000)) return
   }
-
-  const exited = await Promise.race([
-    onceExit(child).then(() => true),
-    sleep(5000).then(() => false),
-  ])
-
-  if (exited) return
-
-  try {
-    child.kill('SIGTERM')
-  } catch {
-    // Ignore.
-  }
+  if (await tryKill('SIGTERM', 10_000)) return
+  if (await tryKill('SIGKILL', 10_000)) return
 }
 
 async function onceExit(child: ChildProcess) {
+  if (child.exitCode != null) return
+
   await new Promise<void>((resolve) => {
     child.once('exit', () => resolve())
   })
