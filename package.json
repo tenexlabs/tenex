@@ -1,6 +1,6 @@
 {
   "name": "tenex",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Scaffold Convex + TanStack Start apps with add-ons (e.g. Better Auth)",
   "bin": {
     "tenex": "./dist/cli.js"
