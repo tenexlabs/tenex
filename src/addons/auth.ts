@@ -808,11 +808,33 @@ import type { DataModel } from './_generated/dataModel'
 
 const siteUrl = process.env.SITE_URL!
 
+const isLocalDevSiteUrl = (() => {
+  try {
+    const { hostname } = new URL(siteUrl)
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+  } catch {
+    return false
+  }
+})()
+
+const trustedOrigins = isLocalDevSiteUrl
+  ? [
+      siteUrl,
+      'http://localhost:*',
+      'http://127.0.0.1:*',
+      'http://[::1]:*',
+      'https://localhost:*',
+      'https://127.0.0.1:*',
+      'https://[::1]:*',
+    ]
+  : [siteUrl]
+
 export const authComponent = createClient<DataModel>(components.betterAuth)
 
 export const createAuth = (ctx: GenericCtx<DataModel>) => {
   return betterAuth({
     baseURL: siteUrl,
+    trustedOrigins,
     database: authComponent.adapter(ctx),
     emailAndPassword: {
       enabled: true,
