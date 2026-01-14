@@ -14,10 +14,6 @@ export async function applyAuthAddon(projectDir: string) {
   await patchTsconfig(path.join(projectDir, 'tsconfig.json'))
   await patchRouter(path.join(srcDir, 'router.tsx'))
   await writeRootRoute(path.join(routesDir, '__root.tsx'))
-  await writeTextFileIfChanged(
-    path.join(projectDir, 'public', 'site.webmanifest'),
-    siteManifestSource(),
-  )
 
   await writeTextFileIfChanged(
     path.join(srcDir, 'lib', 'auth-client.ts'),
@@ -427,7 +423,6 @@ export const Route = createRootRouteWithContext<{
         sizes: '16x16',
         href: '/favicon-16x16.png',
       },
-      { rel: 'manifest', href: '/site.webmanifest', color: '#fffff' },
       { rel: 'icon', href: '/favicon.ico' },
     ],
   }),
@@ -475,18 +470,6 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </body>
     </html>
   )
-}
-`
-}
-
-function siteManifestSource() {
-  return `{
-  "name": "Tenex App",
-  "short_name": "Tenex",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#000000",
-  "theme_color": "#000000"
 }
 `
 }
