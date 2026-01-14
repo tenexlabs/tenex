@@ -86,11 +86,16 @@ async function patchViteConfig(viteConfigPath: string) {
       `vite.config.ts already has an ssr block; please add noExternal: ['@convex-dev/better-auth'] manually`,
     )
   }
+  if (current.includes('optimizeDeps:')) {
+    throw new Error(
+      'vite.config.ts already has an optimizeDeps block; please add the Better Auth exclusions manually',
+    )
+  }
 
   const updated = replaceOrThrow(
     current,
     '  plugins: [',
-    "  ssr: {\n    noExternal: ['@convex-dev/better-auth'],\n  },\n  plugins: [",
+    "  ssr: {\n    noExternal: ['@convex-dev/better-auth'],\n  },\n  optimizeDeps: {\n    entries: [\n      'src/routes/**/*.{ts,tsx}',\n      'app/routes/**/*.{ts,tsx}',\n    ],\n    ignoreOutdatedRequests: true,\n    exclude: [\n      '@convex-dev/better-auth',\n      '@convex-dev/better-auth/react',\n      '@convex-dev/better-auth/react-start',\n      '@convex-dev/better-auth/client/plugins',\n      'better-auth',\n      'better-auth/react',\n      'better-auth/minimal',\n      'better-auth/client',\n      'better-auth/client/plugins',\n      '@better-auth/utils',\n      '@better-auth/utils/base64',\n      '@better-auth/utils/binary',\n      '@better-auth/utils/hash',\n      '@better-auth/utils/hex',\n      '@better-auth/utils/hmac',\n      '@better-auth/utils/otp',\n      '@better-auth/utils/random',\n    ],\n  },\n  plugins: [",
     'Could not find plugins array in vite.config.ts to insert ssr.noExternal',
   )
 
