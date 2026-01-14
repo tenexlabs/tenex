@@ -22,23 +22,25 @@ export async function addAuth(projectDir: string) {
   p.log.info('Initializing Convex (this may prompt you to log in)...')
   await run('npx', ['convex', 'dev', '--once'], { cwd: projectDir })
 
-  const { convexUrl } = await ensureDotEnvLocal(projectDir)
+  const { convexUrl, siteUrl } = await ensureDotEnvLocal(projectDir)
 
   p.log.info('Setting required Convex env vars...')
 
   if (isLocalConvexUrl(convexUrl)) {
     // For local deployments, `convex env set` requires the local backend to be running.
     await withConvexDevRunning(projectDir, convexUrl, async () => {
-      await setEnvVars(projectDir)
+      await setEnvVars(projectDir, siteUrl)
     })
   } else {
-    await setEnvVars(projectDir)
+    await setEnvVars(projectDir, siteUrl)
   }
 
   p.outro('Auth setup complete. Run: npm run dev')
 }
 
-async function ensureDotEnvLocal(projectDir: string): Promise<{ convexUrl: string }> {
+async function ensureDotEnvLocal(
+  projectDir: string,
+): Promise<{ convexUrl: string; siteUrl: string }> {
   const envPath = path.join(projectDir, '.env.local')
   if (!(await pathExists(envPath))) {
     throw new Error(`Expected ${envPath} to exist after convex dev --once`)
@@ -57,13 +59,17 @@ async function ensureDotEnvLocal(projectDir: string): Promise<{ convexUrl: strin
     throw new Error('Could not derive VITE_CONVEX_SITE_URL from VITE_CONVEX_URL')
   }
 
+  const siteUrl = env.VITE_SITE_URL ?? 'http://localhost:3000'
+
   let next = raw
   next = upsertDotenvVar(next, 'VITE_CONVEX_SITE_URL', convexSiteUrl)
-  next = upsertDotenvVar(next, 'VITE_SITE_URL', 'http://localhost:3000')
+  if (!env.VITE_SITE_URL) {
+    next = upsertDotenvVar(next, 'VITE_SITE_URL', siteUrl)
+  }
 
   await writeTextFileIfChanged(envPath, next)
 
-  return { convexUrl: rpcUrl }
+  return { convexUrl: rpcUrl, siteUrl }
 }
 
 function deriveConvexSiteUrl(convexUrl: string): string | undefined {
@@ -92,7 +98,7 @@ function deriveConvexSiteUrl(convexUrl: string): string | undefined {
   }
 }
 
-async function setEnvVars(projectDir: string) {
+async function setEnvVars(projectDir: string, siteUrl: string) {
   const hasBetterAuthSecret = await convexEnvVarExists(
     projectDir,
     'BETTER_AUTH_SECRET',
@@ -108,9 +114,14 @@ async function setEnvVars(projectDir: string) {
       },
     )
   }
-  await run('npx', ['convex', 'env', 'set', 'SITE_URL', 'http://localhost:3000'], {
-    cwd: projectDir,
-  })
+  const hasSiteUrl = await convexEnvVarExists(projectDir, 'SITE_URL')
+  if (hasSiteUrl) {
+    p.log.info('SITE_URL already set; leaving it unchanged')
+  } else {
+    await run('npx', ['convex', 'env', 'set', 'SITE_URL', siteUrl], {
+      cwd: projectDir,
+    })
+  }
 }
 
 async function convexEnvVarExists(projectDir: string, name: string) {

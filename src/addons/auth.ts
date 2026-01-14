@@ -812,27 +812,58 @@ import { query } from './_generated/server'
 import type { DataModel } from './_generated/dataModel'
 
 const siteUrl = process.env.SITE_URL!
+const extraTrustedOrigins = parseTrustedOrigins(
+  process.env.BETTER_AUTH_TRUSTED_ORIGINS,
+)
 
 const isLocalDevSiteUrl = (() => {
   try {
     const { hostname } = new URL(siteUrl)
-    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+    return (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname === '[::1]'
+    )
   } catch {
     return false
   }
 })()
 
-const trustedOrigins = isLocalDevSiteUrl
-  ? [
-      siteUrl,
-      'http://localhost:*',
-      'http://127.0.0.1:*',
-      'http://[::1]:*',
-      'https://localhost:*',
-      'https://127.0.0.1:*',
-      'https://[::1]:*',
-    ]
-  : [siteUrl]
+type HeadersLike = {
+  get(name: string): string | null
+}
+
+type RequestLike = {
+  headers?: HeadersLike
+  url?: string
+}
+
+const trustedOrigins = async (request?: RequestLike) => {
+  const baseOrigins = isLocalDevSiteUrl
+    ? [
+        siteUrl,
+        'http://localhost:*',
+        'http://127.0.0.1:*',
+        'http://0.0.0.0:*',
+        'http://[::1]:*',
+        'https://localhost:*',
+        'https://127.0.0.1:*',
+        'https://0.0.0.0:*',
+        'https://[::1]:*',
+      ]
+    : [siteUrl]
+
+  const devOriginFromRequest = isLocalDevSiteUrl
+    ? getDevOriginFromRequest(request)
+    : undefined
+
+  return uniqueStrings([
+    ...baseOrigins,
+    ...extraTrustedOrigins,
+    ...(devOriginFromRequest ? [devOriginFromRequest] : []),
+  ])
+}
 
 export const authComponent = createClient<DataModel>(components.betterAuth)
 
@@ -847,6 +878,80 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
     },
     plugins: [convex({ authConfig })],
   })
+}
+
+function parseTrustedOrigins(value?: string): string[] {
+  if (!value) return []
+  return value
+    .split(/[\s,]+/g)
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const value of values) {
+    if (!value || seen.has(value)) continue
+    seen.add(value)
+    out.push(value)
+  }
+  return out
+}
+
+function getDevOriginFromRequest(request?: RequestLike): string | undefined {
+  if (!request) return undefined
+  const origin = getHeaderValue(request.headers, 'origin')
+  if (!origin) return undefined
+
+  let originUrl: URL
+  try {
+    originUrl = new URL(origin)
+  } catch {
+    return undefined
+  }
+  if (originUrl.protocol !== 'http:' && originUrl.protocol !== 'https:') return undefined
+
+  const requestHosts = getRequestHosts(request)
+  if (!requestHosts.length) return undefined
+
+  if (requestHosts.includes(originUrl.host)) {
+    return originUrl.protocol + '//' + originUrl.host
+  }
+
+  return undefined
+}
+
+function getRequestHosts(request: RequestLike): string[] {
+  const hosts: string[] = []
+
+  const forwardedHost = getHeaderValue(request.headers, 'x-forwarded-host')
+  if (forwardedHost) hosts.push(...splitHeaderList(forwardedHost))
+
+  const host = getHeaderValue(request.headers, 'host')
+  if (host) hosts.push(...splitHeaderList(host))
+
+  if (typeof request.url === 'string') {
+    try {
+      hosts.push(new URL(request.url).host)
+    } catch {
+      // ignore
+    }
+  }
+
+  return uniqueStrings(hosts.map((value) => value.trim()).filter(Boolean))
+}
+
+function getHeaderValue(headers: HeadersLike | undefined, name: string): string | undefined {
+  if (!headers) return undefined
+  return headers.get(name) ?? headers.get(name.toLowerCase()) ?? undefined
+}
+
+function splitHeaderList(value: string): string[] {
+  return value
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean)
 }
 
 export const getCurrentUser = query({
