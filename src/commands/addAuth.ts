@@ -106,21 +106,15 @@ async function setEnvVars(projectDir: string, siteUrl: string) {
   if (hasBetterAuthSecret) {
     p.log.info('BETTER_AUTH_SECRET already set; leaving it unchanged')
   } else {
-    await run(
-      'npx',
-      ['convex', 'env', 'set', 'BETTER_AUTH_SECRET', generateBetterAuthSecret()],
-      {
-        cwd: projectDir,
-      },
-    )
+    await runConvexEnvSet(projectDir, 'BETTER_AUTH_SECRET', generateBetterAuthSecret())
+    p.log.success('Set BETTER_AUTH_SECRET')
   }
   const hasSiteUrl = await convexEnvVarExists(projectDir, 'SITE_URL')
   if (hasSiteUrl) {
     p.log.info('SITE_URL already set; leaving it unchanged')
   } else {
-    await run('npx', ['convex', 'env', 'set', 'SITE_URL', siteUrl], {
-      cwd: projectDir,
-    })
+    await runConvexEnvSet(projectDir, 'SITE_URL', siteUrl)
+    p.log.success('Set SITE_URL')
   }
 }
 
@@ -131,14 +125,49 @@ async function convexEnvVarExists(projectDir: string, name: string) {
   return new RegExp(`\\b${escapeRegExp(name)}\\b`).test(stdout)
 }
 
+async function runConvexEnvSet(projectDir: string, name: string, value: string) {
+  const maxAttempts = 3
+  let lastOutput = ''
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const { stdout, stderr } = await runCapture(
+      'npx',
+      ['convex', 'env', 'set', name, value],
+      { cwd: projectDir },
+    )
+
+    lastOutput = [stdout, stderr].filter(Boolean).join('\n')
+
+    const exists = await convexEnvVarExists(projectDir, name)
+    if (exists) return
+
+    if (!isTransientConvexEnvOutput(lastOutput) || attempt === maxAttempts) {
+      break
+    }
+
+    await sleep(500 * attempt)
+  }
+
+  const trimmedOutput = lastOutput.trim()
+  const suffix = trimmedOutput ? `\n${trimmedOutput}` : ''
+  throw new Error(`Failed to set ${name} in Convex.${suffix}`)
+}
+
+function isTransientConvexEnvOutput(output: string): boolean {
+  return /Environment variables have changed during push|Hit an error while pushing|Failed due to network error/i.test(
+    output,
+  )
+}
+
 async function runCapture(
   cmd: string,
   args: string[],
-  options: { cwd: string },
+  options: { cwd: string; env?: NodeJS.ProcessEnv },
 ): Promise<{ stdout: string; stderr: string }> {
   return await new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd: options.cwd,
+      env: options.env,
       stdio: ['ignore', 'pipe', 'pipe'],
       shell: process.platform === 'win32',
     })
@@ -199,20 +228,93 @@ async function withConvexDevRunning<T>(
   // setups (and it also conflicts with other commands we run in this process).
   const child = spawn('npx', ['convex', 'dev'], {
     cwd: projectDir,
-    stdio: ['ignore', 'inherit', 'inherit'],
+    stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
+    detached: process.platform !== 'win32',
     env: {
       ...process.env,
       CI: process.env.CI ?? '1',
     },
   })
 
+  const readyPromise = observeConvexDevOutput(child, 60_000)
+
   try {
-    await waitForTcpFromUrl(convexUrl, 60_000, child)
+    await Promise.all([waitForTcpFromUrl(convexUrl, 60_000, child), readyPromise])
     return await fn()
   } finally {
     await stopChildProcess(child)
   }
+}
+
+function observeConvexDevOutput(
+  child: ChildProcess,
+  timeoutMs: number,
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    let resolved = false
+    const readyPattern = /convex functions ready/i
+    const stdoutBuffer = { value: '' }
+    const stderrBuffer = { value: '' }
+    const cleanups: Array<() => void> = []
+
+    const finish = (value: boolean) => {
+      if (resolved) return
+      resolved = true
+      for (const cleanup of cleanups) cleanup()
+      resolve(value)
+    }
+
+    const handleLine = (line: string) => {
+      const cleaned = stripAnsi(line)
+      if (readyPattern.test(cleaned)) {
+        finish(true)
+      }
+    }
+
+    cleanups.push(
+      attachConvexDevStream(child.stdout, stdoutBuffer, process.stdout, handleLine),
+    )
+    cleanups.push(
+      attachConvexDevStream(child.stderr, stderrBuffer, process.stderr, handleLine),
+    )
+
+    const onExit = () => finish(false)
+    child.once('exit', onExit)
+    cleanups.push(() => child.off('exit', onExit))
+
+    const timeout = setTimeout(() => finish(false), timeoutMs)
+    cleanups.push(() => clearTimeout(timeout))
+  })
+}
+
+function attachConvexDevStream(
+  stream: NodeJS.ReadableStream | null,
+  buffer: { value: string },
+  target: NodeJS.WritableStream,
+  onLine: (line: string) => void,
+): () => void {
+  if (!stream) return () => {}
+  stream.setEncoding('utf8')
+
+  const onData = (chunk: string) => {
+    target.write(chunk)
+    buffer.value += chunk
+
+    const normalized = buffer.value.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    const parts = normalized.split('\n')
+    buffer.value = parts.pop() ?? ''
+    for (const line of parts) {
+      if (line.trim()) onLine(line)
+    }
+  }
+
+  stream.on('data', onData)
+  return () => stream.off('data', onData)
+}
+
+function stripAnsi(value: string): string {
+  return value.replace(/\u001b\[[0-9;]*[a-zA-Z]/g, '')
 }
 
 async function waitForTcpFromUrl(
@@ -270,11 +372,7 @@ async function stopChildProcess(child: ChildProcess) {
   }
 
   const tryKill = async (signal: NodeJS.Signals, timeoutMs: number) => {
-    try {
-      child.kill(signal)
-    } catch {
-      // Ignore.
-    }
+    killProcessTree(child, signal)
     return await waitForExit(timeoutMs)
   }
 
@@ -284,6 +382,24 @@ async function stopChildProcess(child: ChildProcess) {
   }
   if (await tryKill('SIGTERM', 10_000)) return
   if (await tryKill('SIGKILL', 10_000)) return
+}
+
+function killProcessTree(child: ChildProcess, signal: NodeJS.Signals) {
+  const pid = child.pid
+  if (pid && process.platform !== 'win32') {
+    try {
+      process.kill(-pid, signal)
+      return
+    } catch {
+      // Fall back to direct kill.
+    }
+  }
+
+  try {
+    child.kill(signal)
+  } catch {
+    // Ignore.
+  }
 }
 
 async function onceExit(child: ChildProcess) {
