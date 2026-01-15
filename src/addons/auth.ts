@@ -1,6 +1,7 @@
 import * as path from 'node:path'
 import * as crypto from 'node:crypto'
 import * as p from '@clack/prompts'
+import { Node, Project, SourceFile, SyntaxKind } from 'ts-morph'
 import { pathExists, readTextFile, writeTextFileIfChanged } from '../lib/fs'
 import { replaceOrThrow } from '../lib/patch'
 
@@ -14,6 +15,7 @@ export async function applyAuthAddon(projectDir: string) {
   await patchTsconfig(path.join(projectDir, 'tsconfig.json'))
   await patchRouter(path.join(srcDir, 'router.tsx'))
   await writeRootRoute(path.join(routesDir, '__root.tsx'))
+  await stripManifestLinkFromRootRoutes(projectDir)
 
   await writeTextFileIfChanged(
     path.join(srcDir, 'lib', 'auth-client.ts'),
@@ -66,10 +68,90 @@ export function generateBetterAuthSecret(): string {
 
 async function resolveAppSourceDir(projectDir: string): Promise<string> {
   const src = path.join(projectDir, 'src')
-  if (await pathExists(src)) return src
   const app = path.join(projectDir, 'app')
-  if (await pathExists(app)) return app
-  throw new Error('Could not find app source directory (expected src/ or app/)')
+
+  const srcScore = await scoreAppDir(src)
+  const appScore = await scoreAppDir(app)
+
+  if (srcScore === 0 && appScore === 0) {
+    if (await pathExists(src)) return src
+    if (await pathExists(app)) return app
+    throw new Error('Could not find app source directory (expected src/ or app/)')
+  }
+
+  if (appScore > srcScore) return app
+  return src
+}
+
+async function scoreAppDir(dir: string): Promise<number> {
+  if (!(await pathExists(dir))) return 0
+
+  let score = 1
+  if (await pathExists(path.join(dir, 'routes', '__root.tsx'))) score += 4
+  if (await pathExists(path.join(dir, 'routes'))) score += 2
+  if (await pathExists(path.join(dir, 'router.tsx'))) score += 2
+
+  return score
+}
+
+async function stripManifestLinkFromRootRoutes(projectDir: string) {
+  const candidates = [
+    path.join(projectDir, 'src', 'routes', '__root.tsx'),
+    path.join(projectDir, 'app', 'routes', '__root.tsx'),
+  ]
+
+  for (const filePath of candidates) {
+    if (!(await pathExists(filePath))) continue
+    await removeManifestLinkFromFile(filePath)
+  }
+}
+
+async function removeManifestLinkFromFile(filePath: string) {
+  const raw = await readTextFile(filePath)
+  const project = new Project({
+    useInMemoryFileSystem: true,
+    skipFileDependencyResolution: true,
+  })
+  const sourceFile = project.createSourceFile(filePath, raw, { overwrite: true })
+  const changed = removeManifestLinks(sourceFile)
+  if (!changed) return
+
+  await writeTextFileIfChanged(filePath, sourceFile.getFullText())
+}
+
+function removeManifestLinks(sourceFile: SourceFile): boolean {
+  let changed = false
+  const linkAssignments = sourceFile
+    .getDescendantsOfKind(SyntaxKind.PropertyAssignment)
+    .filter((assignment) => assignment.getName() === 'links')
+
+  for (const assignment of linkAssignments) {
+    const initializer = assignment.getInitializerIfKind(
+      SyntaxKind.ArrayLiteralExpression,
+    )
+    if (!initializer) continue
+
+    for (const element of initializer.getElements()) {
+      if (!Node.isObjectLiteralExpression(element)) continue
+      const relProperty = element.getProperty('rel')
+      if (!relProperty || !Node.isPropertyAssignment(relProperty)) continue
+      const relValue = getStringLiteralValue(relProperty.getInitializer())
+      if (relValue !== 'manifest') continue
+
+      initializer.removeElement(element)
+      changed = true
+    }
+  }
+
+  return changed
+}
+
+function getStringLiteralValue(value: Node | undefined): string | undefined {
+  if (!value) return undefined
+  if (Node.isStringLiteral(value) || Node.isNoSubstitutionTemplateLiteral(value)) {
+    return value.getLiteralValue()
+  }
+  return undefined
 }
 
 async function patchViteConfig(viteConfigPath: string) {
