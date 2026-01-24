@@ -3,5 +3,5 @@ export function sanitizeProjectName(name: string): string {
     .replace(/[^a-z0-9-]/gi, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
-    .toLowerCase()
+    .toLowerCase();
 }

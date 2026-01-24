@@ -28,8 +28,10 @@
     "ts-morph": "^27.0.2"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.3.11",
     "@types/node": "^20.0.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "ultracite": "^7.0.12"
   },
   "files": [
     "dist",

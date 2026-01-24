@@ -1,272 +1,331 @@
-import * as path from 'node:path'
-import * as crypto from 'node:crypto'
-import * as p from '@clack/prompts'
-import { Node, Project, SourceFile, SyntaxKind } from 'ts-morph'
-import { pathExists, readTextFile, writeTextFileIfChanged } from '../lib/fs'
-import { replaceOrThrow } from '../lib/patch'
+import { randomBytes } from 'node:crypto';
+import { join } from 'node:path';
+import { log } from '@clack/prompts';
+import { Node, Project, type SourceFile, SyntaxKind } from 'ts-morph';
+import { pathExists, readTextFile, writeTextFileIfChanged } from '../lib/fs';
+import { replaceOrThrow } from '../lib/patch';
 
-export const BETTER_AUTH_VERSION = '1.4.9'
+export const BETTER_AUTH_VERSION = '1.4.9';
+
+const TYPES_PROP_REGEX = /(^\s*)"types"\s*:\s*\[([\s\S]*?)\]([ \t]*,?)/m;
+const COMPILER_OPTIONS_REGEX = /(^\s*)"compilerOptions"\s*:\s*\{/m;
+const ROUTER_CONTEXT_REGEX = /context:\s*\{\s*queryClient\s*\}/;
 
 export async function applyAuthAddon(projectDir: string) {
-  const srcDir = await resolveAppSourceDir(projectDir)
-  const routesDir = path.join(srcDir, 'routes')
+  const srcDir = await resolveAppSourceDir(projectDir);
+  const routesDir = join(srcDir, 'routes');
 
-  await patchViteConfig(path.join(projectDir, 'vite.config.ts'))
-  await patchTsconfig(path.join(projectDir, 'tsconfig.json'))
-  await patchRouter(path.join(srcDir, 'router.tsx'))
-  await writeRootRoute(path.join(routesDir, '__root.tsx'))
-  await stripManifestLinkFromRootRoutes(projectDir)
-
-  await writeTextFileIfChanged(
-    path.join(srcDir, 'lib', 'auth-client.ts'),
-    authClientSource(),
-  )
-  await writeTextFileIfChanged(
-    path.join(srcDir, 'lib', 'auth-server.ts'),
-    authServerSource(),
-  )
-  await writeTextFileIfChanged(
-    path.join(routesDir, 'api', 'auth', '$.ts'),
-    authProxyRouteSource(),
-  )
-  await writeTextFileIfChanged(
-    path.join(srcDir, 'components', 'Navbar.tsx'),
-    navbarComponentSource(),
-  )
-  await writeTextFileIfChanged(path.join(routesDir, 'login.tsx'), loginRouteSource())
-  await writeTextFileIfChanged(path.join(routesDir, 'signup.tsx'), signupRouteSource())
-  await writeTextFileIfChanged(
-    path.join(routesDir, 'dashboard.tsx'),
-    dashboardRouteSource(),
-  )
-
-  await writeTextFileIfChanged(path.join(routesDir, 'index.tsx'), landingPageRouteSource())
+  await patchViteConfig(join(projectDir, 'vite.config.ts'));
+  await patchTsconfig(join(projectDir, 'tsconfig.json'));
+  await patchRouter(join(srcDir, 'router.tsx'));
+  await writeRootRoute(join(routesDir, '__root.tsx'));
+  await stripManifestLinkFromRootRoutes(projectDir);
 
   await writeTextFileIfChanged(
-    path.join(projectDir, 'convex', 'convex.config.ts'),
-    convexConfigSource(),
-  )
+    join(srcDir, 'lib', 'auth-client.ts'),
+    authClientSource()
+  );
   await writeTextFileIfChanged(
-    path.join(projectDir, 'convex', 'auth.config.ts'),
-    convexAuthConfigSource(),
-  )
+    join(srcDir, 'lib', 'auth-server.ts'),
+    authServerSource()
+  );
   await writeTextFileIfChanged(
-    path.join(projectDir, 'convex', 'auth.ts'),
-    convexAuthSource(),
-  )
+    join(routesDir, 'api', 'auth', '$.ts'),
+    authProxyRouteSource()
+  );
   await writeTextFileIfChanged(
-    path.join(projectDir, 'convex', 'http.ts'),
-    convexHttpSource(),
-  )
+    join(srcDir, 'components', 'Navbar.tsx'),
+    navbarComponentSource()
+  );
+  await writeTextFileIfChanged(
+    join(routesDir, 'login.tsx'),
+    loginRouteSource()
+  );
+  await writeTextFileIfChanged(
+    join(routesDir, 'signup.tsx'),
+    signupRouteSource()
+  );
+  await writeTextFileIfChanged(
+    join(routesDir, 'dashboard.tsx'),
+    dashboardRouteSource()
+  );
 
-  p.log.success('Added Better Auth (Convex component)')
+  await writeTextFileIfChanged(
+    join(routesDir, 'index.tsx'),
+    landingPageRouteSource()
+  );
+
+  await writeTextFileIfChanged(
+    join(projectDir, 'convex', 'convex.config.ts'),
+    convexConfigSource()
+  );
+  await writeTextFileIfChanged(
+    join(projectDir, 'convex', 'auth.config.ts'),
+    convexAuthConfigSource()
+  );
+  await writeTextFileIfChanged(
+    join(projectDir, 'convex', 'auth.ts'),
+    convexAuthSource()
+  );
+  await writeTextFileIfChanged(
+    join(projectDir, 'convex', 'http.ts'),
+    convexHttpSource()
+  );
+
+  log.success('Added Better Auth (Convex component)');
 }
 
 export function generateBetterAuthSecret(): string {
-  return crypto.randomBytes(32).toString('base64')
+  return randomBytes(32).toString('base64');
 }
 
 async function resolveAppSourceDir(projectDir: string): Promise<string> {
-  const src = path.join(projectDir, 'src')
-  const app = path.join(projectDir, 'app')
+  const src = join(projectDir, 'src');
+  const app = join(projectDir, 'app');
 
-  const srcScore = await scoreAppDir(src)
-  const appScore = await scoreAppDir(app)
+  const srcScore = await scoreAppDir(src);
+  const appScore = await scoreAppDir(app);
 
   if (srcScore === 0 && appScore === 0) {
-    if (await pathExists(src)) return src
-    if (await pathExists(app)) return app
-    throw new Error('Could not find app source directory (expected src/ or app/)')
+    if (await pathExists(src)) {
+      return src;
+    }
+    if (await pathExists(app)) {
+      return app;
+    }
+    throw new Error(
+      'Could not find app source directory (expected src/ or app/)'
+    );
   }
 
-  if (appScore > srcScore) return app
-  return src
+  if (appScore > srcScore) {
+    return app;
+  }
+  return src;
 }
 
 async function scoreAppDir(dir: string): Promise<number> {
-  if (!(await pathExists(dir))) return 0
+  if (!(await pathExists(dir))) {
+    return 0;
+  }
 
-  let score = 1
-  if (await pathExists(path.join(dir, 'routes', '__root.tsx'))) score += 4
-  if (await pathExists(path.join(dir, 'routes'))) score += 2
-  if (await pathExists(path.join(dir, 'router.tsx'))) score += 2
+  let score = 1;
+  if (await pathExists(join(dir, 'routes', '__root.tsx'))) {
+    score += 4;
+  }
+  if (await pathExists(join(dir, 'routes'))) {
+    score += 2;
+  }
+  if (await pathExists(join(dir, 'router.tsx'))) {
+    score += 2;
+  }
 
-  return score
+  return score;
 }
 
 async function stripManifestLinkFromRootRoutes(projectDir: string) {
   const candidates = [
-    path.join(projectDir, 'src', 'routes', '__root.tsx'),
-    path.join(projectDir, 'app', 'routes', '__root.tsx'),
-  ]
+    join(projectDir, 'src', 'routes', '__root.tsx'),
+    join(projectDir, 'app', 'routes', '__root.tsx'),
+  ];
 
   for (const filePath of candidates) {
-    if (!(await pathExists(filePath))) continue
-    await removeManifestLinkFromFile(filePath)
+    if (!(await pathExists(filePath))) {
+      continue;
+    }
+    await removeManifestLinkFromFile(filePath);
   }
 }
 
 async function removeManifestLinkFromFile(filePath: string) {
-  const raw = await readTextFile(filePath)
+  const raw = await readTextFile(filePath);
   const project = new Project({
     useInMemoryFileSystem: true,
     skipFileDependencyResolution: true,
-  })
-  const sourceFile = project.createSourceFile(filePath, raw, { overwrite: true })
-  const changed = removeManifestLinks(sourceFile)
-  if (!changed) return
+  });
+  const sourceFile = project.createSourceFile(filePath, raw, {
+    overwrite: true,
+  });
+  const changed = removeManifestLinks(sourceFile);
+  if (!changed) {
+    return;
+  }
 
-  await writeTextFileIfChanged(filePath, sourceFile.getFullText())
+  await writeTextFileIfChanged(filePath, sourceFile.getFullText());
 }
 
 function removeManifestLinks(sourceFile: SourceFile): boolean {
-  let changed = false
+  let changed = false;
   const linkAssignments = sourceFile
     .getDescendantsOfKind(SyntaxKind.PropertyAssignment)
-    .filter((assignment) => assignment.getName() === 'links')
+    .filter((assignment) => assignment.getName() === 'links');
 
   for (const assignment of linkAssignments) {
     const initializer = assignment.getInitializerIfKind(
-      SyntaxKind.ArrayLiteralExpression,
-    )
-    if (!initializer) continue
+      SyntaxKind.ArrayLiteralExpression
+    );
+    if (!initializer) {
+      continue;
+    }
 
     for (const element of initializer.getElements()) {
-      if (!Node.isObjectLiteralExpression(element)) continue
-      const relProperty = element.getProperty('rel')
-      if (!relProperty || !Node.isPropertyAssignment(relProperty)) continue
-      const relValue = getStringLiteralValue(relProperty.getInitializer())
-      if (relValue !== 'manifest') continue
+      if (!Node.isObjectLiteralExpression(element)) {
+        continue;
+      }
+      const relProperty = element.getProperty('rel');
+      if (!(relProperty && Node.isPropertyAssignment(relProperty))) {
+        continue;
+      }
+      const relValue = getStringLiteralValue(relProperty.getInitializer());
+      if (relValue !== 'manifest') {
+        continue;
+      }
 
-      initializer.removeElement(element)
-      changed = true
+      initializer.removeElement(element);
+      changed = true;
     }
   }
 
-  return changed
+  return changed;
 }
 
 function getStringLiteralValue(value: Node | undefined): string | undefined {
-  if (!value) return undefined
-  if (Node.isStringLiteral(value) || Node.isNoSubstitutionTemplateLiteral(value)) {
-    return value.getLiteralValue()
+  if (!value) {
+    return undefined;
   }
-  return undefined
+  if (
+    Node.isStringLiteral(value) ||
+    Node.isNoSubstitutionTemplateLiteral(value)
+  ) {
+    return value.getLiteralValue();
+  }
+  return undefined;
 }
 
 async function patchViteConfig(viteConfigPath: string) {
   if (!(await pathExists(viteConfigPath))) {
-    throw new Error(`Missing vite config at ${viteConfigPath}`)
+    throw new Error(`Missing vite config at ${viteConfigPath}`);
   }
-  const current = await readTextFile(viteConfigPath)
-  if (current.includes("'@convex-dev/better-auth'") || current.includes('"@convex-dev/better-auth"')) {
-    return
+  const current = await readTextFile(viteConfigPath);
+  if (
+    current.includes("'@convex-dev/better-auth'") ||
+    current.includes('"@convex-dev/better-auth"')
+  ) {
+    return;
   }
 
   if (current.includes('ssr:')) {
     throw new Error(
-      `vite.config.ts already has an ssr block; please add noExternal: ['@convex-dev/better-auth'] manually`,
-    )
+      `vite.config.ts already has an ssr block; please add noExternal: ['@convex-dev/better-auth'] manually`
+    );
   }
   if (current.includes('optimizeDeps:')) {
     throw new Error(
-      'vite.config.ts already has an optimizeDeps block; please add the Better Auth exclusions manually',
-    )
+      'vite.config.ts already has an optimizeDeps block; please add the Better Auth exclusions manually'
+    );
   }
 
   const updated = replaceOrThrow(
     current,
     '  plugins: [',
     "  ssr: {\n    noExternal: ['@convex-dev/better-auth'],\n  },\n  optimizeDeps: {\n    entries: [\n      'src/routes/**/*.{ts,tsx}',\n      'app/routes/**/*.{ts,tsx}',\n    ],\n    ignoreOutdatedRequests: true,\n    exclude: [\n      '@convex-dev/better-auth',\n      '@convex-dev/better-auth/react',\n      '@convex-dev/better-auth/react-start',\n      '@convex-dev/better-auth/client/plugins',\n      'better-auth',\n      'better-auth/react',\n      'better-auth/minimal',\n      'better-auth/client',\n      'better-auth/client/plugins',\n      '@better-auth/utils',\n      '@better-auth/utils/base64',\n      '@better-auth/utils/binary',\n      '@better-auth/utils/hash',\n      '@better-auth/utils/hex',\n      '@better-auth/utils/hmac',\n      '@better-auth/utils/otp',\n      '@better-auth/utils/random',\n    ],\n  },\n  plugins: [",
-    'Could not find plugins array in vite.config.ts to insert ssr.noExternal',
-  )
+    'Could not find plugins array in vite.config.ts to insert ssr.noExternal'
+  );
 
-  await writeTextFileIfChanged(viteConfigPath, updated)
+  await writeTextFileIfChanged(viteConfigPath, updated);
 }
 
 async function patchTsconfig(tsconfigPath: string) {
   if (!(await pathExists(tsconfigPath))) {
-    throw new Error(`Missing tsconfig at ${tsconfigPath}`)
+    throw new Error(`Missing tsconfig at ${tsconfigPath}`);
   }
 
-  const current = await readTextFile(tsconfigPath)
-  let next = current
+  const current = await readTextFile(tsconfigPath);
+  let next = current;
 
   // create-convex's tsconfig.json is JSONC (it contains comments), so we patch it as text.
-  next = upsertTsconfigType(next, 'vite/client')
-  next = upsertTsconfigType(next, 'node')
+  next = upsertTsconfigType(next, 'vite/client');
+  next = upsertTsconfigType(next, 'node');
 
-  await writeTextFileIfChanged(tsconfigPath, next)
+  await writeTextFileIfChanged(tsconfigPath, next);
 }
 
-function upsertTsconfigType(tsconfigContents: string, typeName: string): string {
-  const typesProp = /(^\s*)"types"\s*:\s*\[([\s\S]*?)\]([ \t]*,?)/m
-  const match = tsconfigContents.match(typesProp)
+function upsertTsconfigType(
+  tsconfigContents: string,
+  typeName: string
+): string {
+  const match = tsconfigContents.match(TYPES_PROP_REGEX);
 
   if (match) {
-    const indent = match[1] ?? ''
-    const inside = match[2] ?? ''
-    const trailing = match[3] ?? ''
+    const indent = match[1] ?? '';
+    const inside = match[2] ?? '';
+    const trailing = match[3] ?? '';
 
-    const found = new Set<string>()
+    const found = new Set<string>();
     for (const m of inside.matchAll(/["']([^"']+)["']/g)) {
-      found.add(m[1])
+      found.add(m[1]);
     }
-    if (found.has(typeName)) return tsconfigContents
+    if (found.has(typeName)) {
+      return tsconfigContents;
+    }
 
     // Keep vite/client first if present.
-    const values = Array.from(found)
+    const values = Array.from(found);
     if (values.includes('vite/client')) {
-      values.splice(values.indexOf('vite/client'), 1)
-      values.unshift('vite/client')
+      values.splice(values.indexOf('vite/client'), 1);
+      values.unshift('vite/client');
     }
-    values.push(typeName)
+    values.push(typeName);
 
     const replacement = `${indent}"types": [${values
       .map((v) => JSON.stringify(v))
-      .join(', ')}]${trailing}`
+      .join(', ')}]${trailing}`;
 
-    return tsconfigContents.replace(match[0], replacement)
+    return tsconfigContents.replace(match[0], replacement);
   }
 
   // No existing `types` array: insert it into compilerOptions.
-  const compilerOptionsOpen = /(^\s*)"compilerOptions"\s*:\s*\{/m
-  const compilerMatch = tsconfigContents.match(compilerOptionsOpen)
+  const compilerMatch = tsconfigContents.match(COMPILER_OPTIONS_REGEX);
   if (!compilerMatch) {
-    throw new Error('Could not find compilerOptions in tsconfig.json to add types')
+    throw new Error(
+      'Could not find compilerOptions in tsconfig.json to add types'
+    );
   }
 
-  const compilerOptionsIndent = compilerMatch[1] ?? ''
-  const entryIndent = `${compilerOptionsIndent}  `
+  const compilerOptionsIndent = compilerMatch[1] ?? '';
+  const entryIndent = `${compilerOptionsIndent}  `;
 
   return tsconfigContents.replace(
-    compilerOptionsOpen,
-    `${compilerOptionsIndent}"compilerOptions": {\n${entryIndent}"types": ["vite/client", "node"],`,
-  )
+    COMPILER_OPTIONS_REGEX,
+    `${compilerOptionsIndent}"compilerOptions": {\n${entryIndent}"types": ["vite/client", "node"],`
+  );
 }
 
 async function patchRouter(routerPath: string) {
   if (!(await pathExists(routerPath))) {
-    throw new Error(`Missing router file at ${routerPath}`)
+    throw new Error(`Missing router file at ${routerPath}`);
   }
 
-  const current = await readTextFile(routerPath)
-  if (current.includes('convexQueryClient') && current.includes('context: { queryClient, convexQueryClient')) {
-    return
+  const current = await readTextFile(routerPath);
+  if (
+    current.includes('convexQueryClient') &&
+    current.includes('context: { queryClient, convexQueryClient')
+  ) {
+    return;
   }
 
   const updated = replaceOrThrow(
     current,
-    /context:\s*\{\s*queryClient\s*\}/,
+    ROUTER_CONTEXT_REGEX,
     'context: { queryClient, convexQueryClient }',
-    'Could not find router context block to add convexQueryClient (expected context: { queryClient })',
-  )
+    'Could not find router context block to add convexQueryClient (expected context: { queryClient })'
+  );
 
-  await writeTextFileIfChanged(routerPath, updated)
+  await writeTextFileIfChanged(routerPath, updated);
 }
 
 async function writeRootRoute(rootRoutePath: string) {
-  await writeTextFileIfChanged(rootRoutePath, rootRouteSource())
+  await writeTextFileIfChanged(rootRoutePath, rootRouteSource());
 }
 
 function navbarComponentSource() {
@@ -342,7 +401,7 @@ export function Navbar() {
     </nav>
   )
 }
-`
+`;
 }
 
 function landingPageRouteSource() {
@@ -405,7 +464,7 @@ function Home() {
     </div>
   )
 }
-`
+`;
 }
 
 function authClientSource() {
@@ -415,7 +474,7 @@ import { convexClient } from '@convex-dev/better-auth/client/plugins'
 export const authClient = createAuthClient({
   plugins: [convexClient()],
 })
-`
+`;
 }
 
 function authServerSource() {
@@ -426,7 +485,7 @@ export const { handler, getToken, fetchAuthQuery, fetchAuthMutation, fetchAuthAc
     convexUrl: import.meta.env.VITE_CONVEX_URL!,
     convexSiteUrl: import.meta.env.VITE_CONVEX_SITE_URL!,
   })
-`
+`;
 }
 
 function authProxyRouteSource() {
@@ -441,7 +500,7 @@ export const Route = createFileRoute('/api/auth/$')({
     },
   },
 })
-`
+`;
 }
 
 function rootRouteSource() {
@@ -553,7 +612,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
     </html>
   )
 }
-`
+`;
 }
 
 function loginRouteSource() {
@@ -663,7 +722,7 @@ function Login() {
     </div>
   )
 }
-`
+`;
 }
 
 function signupRouteSource() {
@@ -794,7 +853,7 @@ function Signup() {
     </div>
   )
 }
-`
+`;
 }
 
 function dashboardRouteSource() {
@@ -859,7 +918,7 @@ function Dashboard() {
     </div>
   )
 }
-`
+`;
 }
 
 function convexConfigSource() {
@@ -870,7 +929,7 @@ const app = defineApp()
 app.use(betterAuth)
 
 export default app
-`
+`;
 }
 
 function convexAuthConfigSource() {
@@ -880,7 +939,7 @@ import type { AuthConfig } from 'convex/server'
 export default {
   providers: [getAuthConfigProvider()],
 } satisfies AuthConfig
-`
+`;
 }
 
 function convexAuthSource() {
@@ -964,7 +1023,7 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 function parseTrustedOrigins(value?: string): string[] {
   if (!value) return []
   return value
-    .split(/[\s,]+/g)
+    .split(/[s,]+/g)
     .map((origin) => origin.trim())
     .filter(Boolean)
 }
@@ -1047,7 +1106,7 @@ export const getCurrentUser = query({
     }
   },
 })
-`
+`;
 }
 
 function convexHttpSource() {
@@ -1058,5 +1117,5 @@ const http = httpRouter()
 authComponent.registerRoutes(http, createAuth)
 
 export default http
-`
+`;
 }
