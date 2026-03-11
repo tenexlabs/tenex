@@ -11,66 +11,31 @@ const TYPES_PROP_REGEX = /(^\s*)"types"\s*:\s*\[([\s\S]*?)\]([ \t]*,?)/m;
 const COMPILER_OPTIONS_REGEX = /(^\s*)"compilerOptions"\s*:\s*\{/m;
 const ROUTER_CONTEXT_REGEX = /context:\s*\{\s*queryClient\s*\}/;
 
-export async function applyAuthAddon(projectDir: string) {
+interface ApplyAuthAddonOptions {
+  allowOverwrite?: boolean;
+}
+
+export async function applyAuthAddon(
+  projectDir: string,
+  options: ApplyAuthAddonOptions = {}
+) {
   const srcDir = await resolveAppSourceDir(projectDir);
   const routesDir = join(srcDir, 'routes');
+  const generatedFiles = getAuthAddonGeneratedFiles(
+    projectDir,
+    srcDir,
+    routesDir
+  );
+
+  if (!options.allowOverwrite) {
+    await assertNoConflictingGeneratedFiles(generatedFiles);
+  }
 
   await patchViteConfig(join(projectDir, 'vite.config.ts'));
   await patchTsconfig(join(projectDir, 'tsconfig.json'));
   await patchRouter(join(srcDir, 'router.tsx'));
-  await writeRootRoute(join(routesDir, '__root.tsx'));
+  await writeGeneratedFiles(generatedFiles);
   await stripManifestLinkFromRootRoutes(projectDir);
-
-  await writeTextFileIfChanged(
-    join(srcDir, 'lib', 'auth-client.ts'),
-    authClientSource()
-  );
-  await writeTextFileIfChanged(
-    join(srcDir, 'lib', 'auth-server.ts'),
-    authServerSource()
-  );
-  await writeTextFileIfChanged(
-    join(routesDir, 'api', 'auth', '$.ts'),
-    authProxyRouteSource()
-  );
-  await writeTextFileIfChanged(
-    join(srcDir, 'components', 'Navbar.tsx'),
-    navbarComponentSource()
-  );
-  await writeTextFileIfChanged(
-    join(routesDir, 'login.tsx'),
-    loginRouteSource()
-  );
-  await writeTextFileIfChanged(
-    join(routesDir, 'signup.tsx'),
-    signupRouteSource()
-  );
-  await writeTextFileIfChanged(
-    join(routesDir, 'dashboard.tsx'),
-    dashboardRouteSource()
-  );
-
-  await writeTextFileIfChanged(
-    join(routesDir, 'index.tsx'),
-    landingPageRouteSource()
-  );
-
-  await writeTextFileIfChanged(
-    join(projectDir, 'convex', 'convex.config.ts'),
-    convexConfigSource()
-  );
-  await writeTextFileIfChanged(
-    join(projectDir, 'convex', 'auth.config.ts'),
-    convexAuthConfigSource()
-  );
-  await writeTextFileIfChanged(
-    join(projectDir, 'convex', 'auth.ts'),
-    convexAuthSource()
-  );
-  await writeTextFileIfChanged(
-    join(projectDir, 'convex', 'http.ts'),
-    convexHttpSource()
-  );
 
   log.success('Added Better Auth (Convex component)');
 }
@@ -121,6 +86,107 @@ async function scoreAppDir(dir: string): Promise<number> {
   }
 
   return score;
+}
+
+interface GeneratedAuthFile {
+  filePath: string;
+  contents: string;
+}
+
+function getAuthAddonGeneratedFiles(
+  projectDir: string,
+  srcDir: string,
+  routesDir: string
+): GeneratedAuthFile[] {
+  return [
+    {
+      filePath: join(routesDir, '__root.tsx'),
+      contents: rootRouteSource(),
+    },
+    {
+      filePath: join(srcDir, 'lib', 'auth-client.ts'),
+      contents: authClientSource(),
+    },
+    {
+      filePath: join(srcDir, 'lib', 'auth-server.ts'),
+      contents: authServerSource(),
+    },
+    {
+      filePath: join(routesDir, 'api', 'auth', '$.ts'),
+      contents: authProxyRouteSource(),
+    },
+    {
+      filePath: join(srcDir, 'components', 'Navbar.tsx'),
+      contents: navbarComponentSource(),
+    },
+    {
+      filePath: join(routesDir, 'login.tsx'),
+      contents: loginRouteSource(),
+    },
+    {
+      filePath: join(routesDir, 'signup.tsx'),
+      contents: signupRouteSource(),
+    },
+    {
+      filePath: join(routesDir, 'dashboard.tsx'),
+      contents: dashboardRouteSource(),
+    },
+    {
+      filePath: join(routesDir, 'index.tsx'),
+      contents: landingPageRouteSource(),
+    },
+    {
+      filePath: join(projectDir, 'convex', 'convex.config.ts'),
+      contents: convexConfigSource(),
+    },
+    {
+      filePath: join(projectDir, 'convex', 'auth.config.ts'),
+      contents: convexAuthConfigSource(),
+    },
+    {
+      filePath: join(projectDir, 'convex', 'auth.ts'),
+      contents: convexAuthSource(),
+    },
+    {
+      filePath: join(projectDir, 'convex', 'http.ts'),
+      contents: convexHttpSource(),
+    },
+  ];
+}
+
+async function assertNoConflictingGeneratedFiles(
+  files: GeneratedAuthFile[]
+): Promise<void> {
+  const conflicts: string[] = [];
+
+  for (const { filePath, contents } of files) {
+    if (!(await pathExists(filePath))) {
+      continue;
+    }
+
+    const current = await readTextFile(filePath);
+    if (current !== contents) {
+      conflicts.push(filePath);
+    }
+  }
+
+  if (conflicts.length === 0) {
+    return;
+  }
+
+  throw new Error(
+    [
+      'tenex add auth would overwrite existing files. Aborting to preserve your app.',
+      'Remove or rename these files and rerun the command if you want Tenex to scaffold them:',
+      ...conflicts.map((filePath) => `- ${filePath}`),
+    ].join('\n')
+  );
+}
+
+async function writeGeneratedFiles(files: GeneratedAuthFile[]) {
+  for (const { filePath, contents } of files) {
+    await writeTextFileIfChanged(filePath, contents);
+  }
 }
 
 async function stripManifestLinkFromRootRoutes(projectDir: string) {
@@ -322,10 +388,6 @@ async function patchRouter(routerPath: string) {
   );
 
   await writeTextFileIfChanged(routerPath, updated);
-}
-
-async function writeRootRoute(rootRoutePath: string) {
-  await writeTextFileIfChanged(rootRoutePath, rootRouteSource());
 }
 
 function navbarComponentSource() {
@@ -943,7 +1005,7 @@ export default {
 }
 
 function convexAuthSource() {
-  return `import { betterAuth } from 'better-auth/minimal'
+  return `import { betterAuth, type BetterAuthOptions } from 'better-auth/minimal'
 import { createClient, type GenericCtx } from '@convex-dev/better-auth'
 import { convex } from '@convex-dev/better-auth/plugins'
 import authConfig from './auth.config'
@@ -1007,8 +1069,10 @@ const trustedOrigins = async (request?: RequestLike) => {
 
 export const authComponent = createClient<DataModel>(components.betterAuth)
 
-export const createAuth = (ctx: GenericCtx<DataModel>) => {
-  return betterAuth({
+export const createAuthOptions = (
+  ctx: GenericCtx<DataModel>
+): BetterAuthOptions => {
+  return {
     baseURL: siteUrl,
     trustedOrigins,
     database: authComponent.adapter(ctx),
@@ -1017,13 +1081,17 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       requireEmailVerification: false,
     },
     plugins: [convex({ authConfig })],
-  })
+  } satisfies BetterAuthOptions
+}
+
+export const createAuth = (ctx: GenericCtx<DataModel>) => {
+  return betterAuth(createAuthOptions(ctx))
 }
 
 function parseTrustedOrigins(value?: string): string[] {
   if (!value) return []
   return value
-    .split(/[s,]+/g)
+    .split(/[\\s,]+/g)
     .map((origin) => origin.trim())
     .filter(Boolean)
 }
