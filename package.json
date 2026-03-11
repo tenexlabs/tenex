@@ -1,7 +1,7 @@
 {
   "name": "tenex",
   "version": "0.0.4",
-  "description": "Scaffold Convex + TanStack Start apps with add-ons (e.g. Better Auth)",
+  "description": "Founder-ready TanStack Start + Convex starter with Better Auth and component-first add-ons",
   "bin": {
     "tenex": "./dist/cli.js"
   },

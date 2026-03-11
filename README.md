@@ -1,10 +1,32 @@
 # tenex
 
-CLI tool to scaffold full-stack apps with TanStack Start, Convex, and Better Auth.
+Founder-ready CLI for scaffolding TanStack Start + Convex apps with Better Auth and component-first add-ons.
 
-## Installation
+## What Tenex Creates
 
-Use directly via `npx`:
+- Guided project builder with persisted `tenex.json`
+- Three templates:
+  - `saas-core`
+  - `ai-saas`
+  - `waitlist`
+- Better Auth + Convex auth scaffold
+- Founder-facing product shell:
+  - Landing page
+  - Dashboard
+  - Onboarding
+  - Settings
+  - Pricing
+- Component-first add-ons when available:
+  - Billing: Stripe component or Autumn component
+  - Email: Resend component
+  - Analytics: PostHog
+  - Storage: Convex file storage or Cloudflare R2 component
+  - Teams: Better Auth organization
+  - Admin: custom same-app admin panel
+
+## Install
+
+Use directly:
 
 ```bash
 npx tenex new my-app
@@ -18,61 +40,72 @@ npm install -g tenex
 
 ## Commands
 
-### `tenex new [name]` / `tenex init [name]`
+### `tenex new [name]`
 
-Create a new project with TanStack Start + Convex + Better Auth.
+Creates a new founder-ready app and prompts for:
 
-```bash
-npx tenex new my-app
-```
+- package manager
+- template
+- billing provider
+- storage provider
+- optional email
+- optional analytics
+- optional teams
+- optional admin panel
 
-This will:
-1. Scaffold a TanStack Start project with Convex using `create-convex`
-2. Add Better Auth with Convex integration
-3. Generate a clean landing page, login, signup, and dashboard
-4. Set up a shared navbar component with auth state handling
-
-### `tenex add auth`
-
-Add Better Auth to an existing TanStack Start + Convex project:
+Non-interactive example:
 
 ```bash
-npx tenex add auth
+npx tenex new my-app \
+  --yes \
+  --template saas-core \
+  --package-manager npm \
+  --billing stripe \
+  --storage convex \
+  --email resend \
+  --analytics posthog \
+  --teams organization \
+  --admin panel
 ```
 
-## What You Get
+### `tenex add <addon>`
 
-- **TanStack Start** - Full-stack React framework with file-based routing
-- **Convex** - Real-time backend with automatic syncing
-- **Better Auth** - Email/password authentication out of the box
-- **Black & Red Theme** - Clean, modern UI with Space Mono font
-- **Shared Navbar** - Responsive navigation with auth-aware buttons
-- **Pre-built Pages**:
-  - Landing page with hero section
-  - Login and signup forms
-  - Protected dashboard with user info
-
-## Quick Start
+Adds or enables an addon in an existing Tenex project.
 
 ```bash
-# Create new project
-npx tenex new my-app
-
-# Navigate to project
-cd my-app
-
-# Start Convex dev server (in one terminal)
-npx convex dev
-
-# Start the app (in another terminal)
-npm run dev
+tenex add billing --provider stripe
+tenex add storage --provider r2
+tenex add email --provider resend
+tenex add analytics --provider posthog
+tenex add teams --provider organization
+tenex add admin --provider panel
 ```
 
-## Requirements
+### `tenex doctor`
 
-- Node.js 18+
-- npm
+Checks `tenex.json`, local env files, and Convex env vars against the enabled addon set.
 
-## License
+### `tenex dev`
 
-Apache-2.0
+Runs Convex and the app together using the project package manager.
+
+### `tenex deploy`
+
+Writes `TENEX_HANDOFF.md` and runs the Convex deploy step after env validation.
+
+## Generated Project Files
+
+Tenex writes:
+
+- `tenex.json` for scaffold state
+- a project-specific `README.md`
+- managed scaffold files for the selected template
+- addon-specific files and Convex config updates
+
+## Development
+
+```bash
+npm run build
+npm test
+npm exec -- ultracite check
+```
