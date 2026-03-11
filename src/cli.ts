@@ -2,16 +2,21 @@
 
 import { log } from '@clack/prompts';
 import { cmdAdd } from './commands/add';
+import { cmdDeploy } from './commands/deploy';
+import { cmdDev } from './commands/dev';
+import { cmdDoctor } from './commands/doctor';
 import { cmdNew } from './commands/new';
 
 function printUsage() {
-  // Keep this short; README currently documents `init`.
   console.log(`tenex
 
 Usage:
   tenex init [name]
   tenex new [name]
-  tenex add auth
+  tenex add <auth|billing|email|analytics|storage|teams|admin>
+  tenex doctor
+  tenex dev
+  tenex deploy
 `);
 }
 
@@ -43,6 +48,21 @@ async function main() {
 
   if (command === 'add') {
     await cmdAdd(args.slice(1));
+    return;
+  }
+
+  if (command === 'doctor') {
+    await cmdDoctor();
+    return;
+  }
+
+  if (command === 'dev') {
+    await cmdDev();
+    return;
+  }
+
+  if (command === 'deploy') {
+    await cmdDeploy();
     return;
   }
 

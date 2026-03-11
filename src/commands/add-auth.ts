@@ -9,6 +9,12 @@ import {
 } from '../addons/auth';
 import { parseDotenv, upsertDotenvVar } from '../lib/dotenv';
 import { pathExists, readTextFile, writeTextFileIfChanged } from '../lib/fs';
+import {
+  detectPackageManager,
+  type PackageManager,
+  packageManagerExecCommand,
+  packageManagerInstallCommand,
+} from '../lib/package-manager';
 import { run } from '../lib/run';
 
 const CONVEX_CLOUD_REGEX = /\.convex\.cloud$/;
@@ -18,27 +24,54 @@ const TRANSIENT_ENV_OUTPUT_REGEX =
 const CONVEX_READY_REGEX = /convex functions ready/i;
 // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape sequences require ESC control character
 const ANSI_ESCAPE_REGEX = /\u001b\[[0-9;]*[a-zA-Z]/g;
+interface RunCaptureResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+}
+interface ConvexDevReadyResult {
+  ready: boolean;
+  reason: 'ready' | 'exit' | 'timeout';
+}
 
-export async function addAuth(projectDir: string) {
-  intro('tenex add auth');
+interface AddAuthOptions {
+  allowOverwrite?: boolean;
+  packageManager?: PackageManager;
+  showIntro?: boolean;
+}
 
-  await applyAuthAddon(projectDir);
+export async function addAuth(
+  projectDir: string,
+  options: AddAuthOptions = {}
+) {
+  const packageManager =
+    options.packageManager ?? (await detectPackageManager(projectDir));
+
+  if (options.showIntro !== false) {
+    intro('tenex add auth');
+  }
+
+  await applyAuthAddon(projectDir, {
+    allowOverwrite: options.allowOverwrite,
+  });
 
   log.info('Installing dependencies...');
-  await run('npm', ['install', 'convex@latest', '@convex-dev/better-auth'], {
-    cwd: projectDir,
-  });
-  await run(
-    'npm',
-    ['install', `better-auth@${BETTER_AUTH_VERSION}`, '--save-exact'],
-    {
-      cwd: projectDir,
-    }
-  );
-  await run('npm', ['install', '-D', '@types/node'], { cwd: projectDir });
+  for (const command of packageManagerInstallCommand(packageManager, [
+    { name: 'convex@latest' },
+    { name: '@convex-dev/better-auth' },
+    { name: `better-auth@${BETTER_AUTH_VERSION}`, exact: true },
+    { name: '@types/node', dev: true },
+  ])) {
+    await run(command.cmd, command.args, { cwd: projectDir });
+  }
 
   log.info('Initializing Convex (this may prompt you to log in)...');
-  await run('npx', ['convex', 'dev', '--once'], { cwd: projectDir });
+  const convexOnce = packageManagerExecCommand(packageManager, 'convex', [
+    'dev',
+    '--once',
+  ]);
+  await run(convexOnce.cmd, convexOnce.args, { cwd: projectDir });
 
   const { convexUrl, siteUrl } = await ensureDotEnvLocal(projectDir);
 
@@ -46,14 +79,21 @@ export async function addAuth(projectDir: string) {
 
   if (isLocalConvexUrl(convexUrl)) {
     // For local deployments, `convex env set` requires the local backend to be running.
-    await withConvexDevRunning(projectDir, convexUrl, async () => {
-      await setEnvVars(projectDir, siteUrl);
-    });
+    await withConvexDevRunning(
+      projectDir,
+      packageManager,
+      convexUrl,
+      async () => {
+        await setEnvVars(projectDir, packageManager, siteUrl);
+      }
+    );
   } else {
-    await setEnvVars(projectDir, siteUrl);
+    await setEnvVars(projectDir, packageManager, siteUrl);
   }
 
-  outro('Auth setup complete. Run: npm run dev');
+  if (options.showIntro !== false) {
+    outro('Auth setup complete. Run: tenex dev');
+  }
 }
 
 async function ensureDotEnvLocal(
@@ -121,9 +161,14 @@ function deriveConvexSiteUrl(convexUrl: string): string | undefined {
   }
 }
 
-async function setEnvVars(projectDir: string, siteUrl: string) {
+async function setEnvVars(
+  projectDir: string,
+  packageManager: PackageManager,
+  siteUrl: string
+) {
   const hasBetterAuthSecret = await convexEnvVarExists(
     projectDir,
+    packageManager,
     'BETTER_AUTH_SECRET'
   );
   if (hasBetterAuthSecret) {
@@ -131,22 +176,35 @@ async function setEnvVars(projectDir: string, siteUrl: string) {
   } else {
     await runConvexEnvSet(
       projectDir,
+      packageManager,
       'BETTER_AUTH_SECRET',
       generateBetterAuthSecret()
     );
     log.success('Set BETTER_AUTH_SECRET');
   }
-  const hasSiteUrl = await convexEnvVarExists(projectDir, 'SITE_URL');
+  const hasSiteUrl = await convexEnvVarExists(
+    projectDir,
+    packageManager,
+    'SITE_URL'
+  );
   if (hasSiteUrl) {
     log.info('SITE_URL already set; leaving it unchanged');
   } else {
-    await runConvexEnvSet(projectDir, 'SITE_URL', siteUrl);
+    await runConvexEnvSet(projectDir, packageManager, 'SITE_URL', siteUrl);
     log.success('Set SITE_URL');
   }
 }
 
-async function convexEnvVarExists(projectDir: string, name: string) {
-  const { stdout } = await runCapture('npx', ['convex', 'env', 'list'], {
+async function convexEnvVarExists(
+  projectDir: string,
+  packageManager: PackageManager,
+  name: string
+) {
+  const convexList = packageManagerExecCommand(packageManager, 'convex', [
+    'env',
+    'list',
+  ]);
+  const { stdout } = await runCapture(convexList.cmd, convexList.args, {
     cwd: projectDir,
   });
   return new RegExp(`\\b${escapeRegExp(name)}\\b`).test(stdout);
@@ -154,6 +212,7 @@ async function convexEnvVarExists(projectDir: string, name: string) {
 
 async function runConvexEnvSet(
   projectDir: string,
+  packageManager: PackageManager,
   name: string,
   value: string
 ) {
@@ -161,15 +220,28 @@ async function runConvexEnvSet(
   let lastOutput = '';
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const { stdout, stderr } = await runCapture(
-      'npx',
-      ['convex', 'env', 'set', name, value],
-      { cwd: projectDir }
-    );
+    const convexSet = packageManagerExecCommand(packageManager, 'convex', [
+      'env',
+      'set',
+      name,
+      value,
+    ]);
+    const result = await runCapture(convexSet.cmd, convexSet.args, {
+      cwd: projectDir,
+      allowNonZeroExit: true,
+    });
 
-    lastOutput = [stdout, stderr].filter(Boolean).join('\n');
+    lastOutput = formatRunCaptureResult(result);
 
-    const exists = await convexEnvVarExists(projectDir, name);
+    let exists = false;
+    try {
+      exists = await convexEnvVarExists(projectDir, packageManager, name);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      lastOutput = [lastOutput, `convex env list check failed: ${message}`]
+        .filter(Boolean)
+        .join('\n');
+    }
     if (exists) {
       return;
     }
@@ -193,8 +265,12 @@ function isTransientConvexEnvOutput(output: string): boolean {
 async function runCapture(
   cmd: string,
   args: string[],
-  options: { cwd: string; env?: NodeJS.ProcessEnv }
-): Promise<{ stdout: string; stderr: string }> {
+  options: {
+    cwd: string;
+    env?: NodeJS.ProcessEnv;
+    allowNonZeroExit?: boolean;
+  }
+): Promise<RunCaptureResult> {
   return await new Promise((resolve, reject) => {
     const child = spawn(cmd, args, {
       cwd: options.cwd,
@@ -218,8 +294,15 @@ async function runCapture(
 
     child.on('error', reject);
     child.on('exit', (code, signal) => {
-      if (code === 0) {
-        return resolve({ stdout, stderr });
+      const result: RunCaptureResult = {
+        stdout,
+        stderr,
+        exitCode: code,
+        signal,
+      };
+
+      if (code === 0 || options.allowNonZeroExit) {
+        return resolve(result);
       }
 
       reject(
@@ -229,6 +312,18 @@ async function runCapture(
       );
     });
   });
+}
+
+function formatRunCaptureResult(result: RunCaptureResult): string {
+  return [
+    result.stdout,
+    result.stderr,
+    result.exitCode === 0
+      ? ''
+      : `exit code ${result.exitCode ?? 'null'} signal ${result.signal ?? 'null'}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
 }
 
 function escapeRegExp(input: string) {
@@ -251,6 +346,7 @@ function isLocalConvexUrl(convexUrl: string): boolean {
 
 async function withConvexDevRunning<T>(
   projectDir: string,
+  packageManager: PackageManager,
   convexUrl: string,
   fn: () => Promise<T>
 ): Promise<T> {
@@ -259,7 +355,10 @@ async function withConvexDevRunning<T>(
   // Run `convex dev` non-interactively. When stdin is a TTY, Convex enables
   // keyboard controls (raw mode) which can crash with `setRawMode EIO` on some
   // setups (and it also conflicts with other commands we run in this process).
-  const child = spawn('npx', ['convex', 'dev'], {
+  const convexDev = packageManagerExecCommand(packageManager, 'convex', [
+    'dev',
+  ]);
+  const child = spawn(convexDev.cmd, convexDev.args, {
     cwd: projectDir,
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
@@ -273,10 +372,13 @@ async function withConvexDevRunning<T>(
   const readyPromise = observeConvexDevOutput(child, 60_000);
 
   try {
-    await Promise.all([
+    const [, readyResult] = await Promise.all([
       waitForTcpFromUrl(convexUrl, 60_000, child),
       readyPromise,
     ]);
+    if (!readyResult.ready) {
+      throw convexDevNotReadyError(readyResult);
+    }
     return await fn();
   } finally {
     await stopChildProcess(child);
@@ -286,14 +388,14 @@ async function withConvexDevRunning<T>(
 function observeConvexDevOutput(
   child: ChildProcess,
   timeoutMs: number
-): Promise<boolean> {
+): Promise<ConvexDevReadyResult> {
   return new Promise((resolve) => {
     let resolved = false;
     const stdoutBuffer = { value: '' };
     const stderrBuffer = { value: '' };
     const cleanups: Array<() => void> = [];
 
-    const finish = (value: boolean) => {
+    const finish = (result: ConvexDevReadyResult) => {
       if (resolved) {
         return;
       }
@@ -301,13 +403,13 @@ function observeConvexDevOutput(
       for (const cleanup of cleanups) {
         cleanup();
       }
-      resolve(value);
+      resolve(result);
     };
 
     const handleLine = (line: string) => {
       const cleaned = stripAnsi(line);
       if (CONVEX_READY_REGEX.test(cleaned)) {
-        finish(true);
+        finish({ ready: true, reason: 'ready' });
       }
     };
 
@@ -328,13 +430,27 @@ function observeConvexDevOutput(
       )
     );
 
-    const onExit = () => finish(false);
+    const onExit = () => finish({ ready: false, reason: 'exit' });
     child.once('exit', onExit);
     cleanups.push(() => child.off('exit', onExit));
 
-    const timeout = setTimeout(() => finish(false), timeoutMs);
+    const timeout = setTimeout(
+      () => finish({ ready: false, reason: 'timeout' }),
+      timeoutMs
+    );
     cleanups.push(() => clearTimeout(timeout));
   });
+}
+
+function convexDevNotReadyError(result: ConvexDevReadyResult): Error {
+  if (result.reason === 'exit') {
+    return new Error(
+      'convex dev exited before reporting that functions were ready'
+    );
+  }
+  return new Error(
+    'Timed out waiting for convex dev to report that functions were ready'
+  );
 }
 
 function noop() {
