@@ -172,6 +172,7 @@ export type TenexConfig = typeof tenexConfig
 function appShellSource(): string {
   return `import type { ReactNode } from 'react'
 import { Navbar } from '~/components/Navbar'
+import { tenexConfig } from '~/lib/tenex.generated'
 
 interface AppShellProps {
   children: ReactNode
@@ -181,19 +182,43 @@ interface AppShellProps {
 
 export function AppShell({ children, title, description }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(255,87,34,0.18),_transparent_35%),linear-gradient(180deg,_#09090b_0%,_#10131a_55%,_#141a23_100%)] text-white">
+    <div className="min-h-screen bg-[#050505] text-white [background-image:linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px),radial-gradient(circle_at_top,rgba(220,38,38,0.24),transparent_28%)] [background-size:24px_24px,24px_24px,100%_100%]">
       <Navbar />
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-10 sm:px-6 lg:px-8">
-        <header className="rounded-3xl border border-white/10 bg-white/5 p-8 shadow-[0_32px_80px_rgba(0,0,0,0.32)] backdrop-blur">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-[0.3em] text-orange-300">
-            Founder-ready control room
-          </p>
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            {title}
-          </h1>
-          <p className="mt-4 max-w-3xl text-base leading-7 text-white/70 sm:text-lg">
-            {description}
-          </p>
+      <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <header className="overflow-hidden border border-red-500/25 bg-black/85 shadow-[0_0_0_1px_rgba(239,68,68,0.12),0_28px_80px_rgba(0,0,0,0.45)]">
+          <div className="grid gap-6 border-b border-red-500/20 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(260px,0.65fr)] lg:items-end">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.35em] text-red-300">
+                Founder operating system
+              </p>
+              <h1 className="mt-3 max-w-4xl text-3xl leading-tight text-white sm:text-4xl lg:text-5xl">
+                {title}
+              </h1>
+              <p className="mt-4 max-w-3xl text-sm leading-7 text-white/65 sm:text-base">
+                {description}
+              </p>
+            </div>
+
+            <div className="border border-white/10 bg-white/[0.03]">
+              <div className="border-b border-white/10 px-4 py-3 text-[11px] uppercase tracking-[0.3em] text-white/45">
+                Surface profile
+              </div>
+              <div className="grid gap-px bg-white/10 sm:grid-cols-3 lg:grid-cols-1">
+                <div className="bg-black px-4 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-white/45">Brand</p>
+                  <p className="mt-2 text-sm text-white">{tenexConfig.brand.name}</p>
+                </div>
+                <div className="bg-black px-4 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-white/45">Template</p>
+                  <p className="mt-2 text-sm text-white">{tenexConfig.template}</p>
+                </div>
+                <div className="bg-black px-4 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.24em] text-white/45">Stack</p>
+                  <p className="mt-2 text-sm text-white">TanStack + Convex</p>
+                </div>
+              </div>
+            </div>
+          </div>
         </header>
         {children}
       </main>
@@ -248,63 +273,82 @@ export function Navbar() {
   }, [location.pathname])
 
   return (
-    <nav className="sticky top-0 z-40 border-b border-white/10 bg-black/40 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex items-center gap-3">
-          <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-orange-300/30 bg-orange-400/10 text-sm font-semibold uppercase tracking-[0.2em] text-orange-200">
+    <nav className="sticky top-0 z-40 border-b border-red-500/20 bg-black/90 backdrop-blur">
+      <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center justify-between gap-3">
+            <Link to="/" className="flex min-w-0 items-center gap-3">
+              <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center border border-red-500/35 bg-red-500/12 text-sm font-semibold uppercase tracking-[0.2em] text-red-100">
             {tenexConfig.brand.name.slice(0, 2)}
-          </span>
-          <span className="text-sm font-semibold uppercase tracking-[0.25em] text-white/80">
-            {tenexConfig.brand.name}
-          </span>
-        </Link>
-
-        <div className="hidden items-center gap-6 md:flex">
-          {(isAuthenticated ? privateLinks : publicLinks).map((link) => {
-            const isActive = location.pathname === link.to
-            return (
-              <Link
-                key={link.to}
-                to={link.to}
-                className={isActive ? 'text-white' : 'text-white/55 transition-colors hover:text-white'}
-              >
-                {link.label}
-              </Link>
-            )
-          })}
-        </div>
-
-        <div className="flex items-center gap-3">
-          {isAuthenticated ? (
-            <>
-              <span className="hidden text-sm text-white/50 sm:inline">
-                {tenexConfig.brand.tagline}
               </span>
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 disabled:opacity-60"
-              >
-                {isLoggingOut ? 'Signing out...' : 'Sign out'}
-              </button>
-            </>
-          ) : (
-            <>
-              <Link
-                to="/login"
-                className="rounded-full border border-white/10 px-4 py-2 text-sm font-medium text-white/80 transition hover:text-white"
-              >
-                Log in
-              </Link>
-              <Link
-                to="/signup"
-                className="rounded-full bg-orange-500 px-4 py-2 text-sm font-medium text-black transition hover:bg-orange-400"
-              >
-                Launch setup
-              </Link>
-            </>
-          )}
+              <div className="min-w-0">
+                <span className="block truncate text-sm uppercase tracking-[0.28em] text-white">
+                  {tenexConfig.brand.name}
+                </span>
+                <span className="block truncate text-[10px] uppercase tracking-[0.28em] text-white/45">
+                  {tenexConfig.brand.tagline}
+                </span>
+              </div>
+            </Link>
+
+            <span className="inline-flex border border-white/10 bg-white/[0.03] px-3 py-2 text-[10px] uppercase tracking-[0.28em] text-white/50 lg:hidden">
+              {isAuthenticated ? 'Authenticated' : 'Public'}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
+            <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
+              {(isAuthenticated ? privateLinks : publicLinks).map((link) => {
+                const isActive = location.pathname === link.to
+                return (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    className={
+                      isActive
+                        ? 'inline-flex shrink-0 border border-red-500/35 bg-red-500/12 px-3 py-2 text-[11px] uppercase tracking-[0.24em] text-red-100'
+                        : 'inline-flex shrink-0 border border-white/10 bg-white/[0.02] px-3 py-2 text-[11px] uppercase tracking-[0.24em] text-white/55 transition hover:border-white/20 hover:text-white'
+                    }
+                  >
+                    {link.label}
+                  </Link>
+                )
+              })}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {isAuthenticated ? (
+                <>
+                  <span className="hidden border border-white/10 bg-white/[0.03] px-3 py-2 text-[10px] uppercase tracking-[0.24em] text-white/45 xl:inline-flex">
+                    {tenexConfig.brand.tagline}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleLogout}
+                    disabled={isLoggingOut}
+                    className="inline-flex shrink-0 border border-white/15 bg-white/[0.05] px-4 py-2 text-[11px] uppercase tracking-[0.24em] text-white transition hover:bg-white/[0.08] disabled:opacity-60"
+                  >
+                    {isLoggingOut ? 'Signing out' : 'Sign out'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/login"
+                    className="inline-flex shrink-0 border border-white/15 bg-white/[0.02] px-4 py-2 text-[11px] uppercase tracking-[0.24em] text-white/80 transition hover:text-white"
+                  >
+                    Log in
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className="inline-flex shrink-0 border border-red-500/45 bg-red-500 px-4 py-2 text-[11px] uppercase tracking-[0.24em] text-black transition hover:bg-red-400"
+                  >
+                    Launch setup
+                  </Link>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </nav>
@@ -327,77 +371,105 @@ function Home() {
   const isAuthenticated = context.isAuthenticated
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(249,115,22,0.28),_transparent_28%),linear-gradient(180deg,_#050505_0%,_#111827_52%,_#172033_100%)] text-white">
+    <div className="min-h-screen bg-[#050505] text-white [background-image:linear-gradient(rgba(255,255,255,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.04)_1px,transparent_1px),radial-gradient(circle_at_top,rgba(220,38,38,0.28),transparent_30%)] [background-size:24px_24px,24px_24px,100%_100%]">
       <Navbar />
-      <main className="mx-auto flex max-w-6xl flex-col gap-16 px-4 py-16 sm:px-6 lg:px-8">
-        <section className="grid gap-10 lg:grid-cols-[1.2fr_0.8fr] lg:items-end">
-          <div>
-            <p className="mb-4 text-xs font-semibold uppercase tracking-[0.35em] text-orange-300">
+      <main className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <section className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
+          <article className="overflow-hidden border border-red-500/25 bg-black/88 shadow-[0_0_0_1px_rgba(239,68,68,0.12),0_32px_90px_rgba(0,0,0,0.5)]">
+            <div className="border-b border-red-500/20 px-4 py-4 sm:px-6">
+              <p className="text-[11px] uppercase tracking-[0.35em] text-red-300">
               {tenexConfig.hero.eyebrow}
-            </p>
-            <h1 className="max-w-4xl text-5xl font-semibold leading-tight tracking-tight sm:text-6xl">
-              {tenexConfig.hero.title}
-            </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-white/72">
-              {tenexConfig.hero.description}
-            </p>
-            <div className="mt-8 flex flex-wrap gap-4">
-              {isAuthenticated ? (
-                <Link
-                  to="/dashboard"
-                  className="rounded-full bg-orange-500 px-6 py-3 text-sm font-semibold text-black transition hover:bg-orange-400"
-                >
-                  Open control room
-                </Link>
-              ) : (
-                <>
-                  <Link
-                    to="/signup"
-                    className="rounded-full bg-orange-500 px-6 py-3 text-sm font-semibold text-black transition hover:bg-orange-400"
-                  >
-                    Start building
-                  </Link>
-                  <Link
-                    to="/pricing"
-                    className="rounded-full border border-white/10 bg-white/5 px-6 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                  >
-                    Review monetization
-                  </Link>
-                </>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.32)] backdrop-blur">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-orange-200">
-              First launch checklist
-            </p>
-            <div className="mt-6 space-y-4">
-              {tenexConfig.workflow.nextActions.map((item) => (
-                <div
-                  key={item}
-                  className="rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/72"
-                >
-                  {item}
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-3">
-          {tenexConfig.dashboard.metrics.map((metric) => (
-            <div
-              key={metric.label}
-              className="rounded-[1.75rem] border border-white/10 bg-black/20 p-6"
-            >
-              <p className="text-sm uppercase tracking-[0.28em] text-white/45">
-                {metric.label}
               </p>
-              <p className="mt-4 text-3xl font-semibold text-white">{metric.value}</p>
-              <p className="mt-2 text-sm leading-6 text-white/60">{metric.detail}</p>
             </div>
-          ))}
+
+            <div className="grid gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(260px,0.85fr)] lg:items-end">
+              <div>
+                <h1 className="max-w-4xl text-4xl leading-[1.05] text-white sm:text-5xl lg:text-6xl">
+                  {tenexConfig.hero.title}
+                </h1>
+                <p className="mt-5 max-w-2xl text-sm leading-7 text-white/68 sm:text-base">
+                  {tenexConfig.hero.description}
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  {isAuthenticated ? (
+                    <Link
+                      to="/dashboard"
+                      className="inline-flex border border-red-500/45 bg-red-500 px-5 py-3 text-[11px] uppercase tracking-[0.24em] text-black transition hover:bg-red-400"
+                    >
+                      Open control room
+                    </Link>
+                  ) : (
+                    <>
+                      <Link
+                        to="/signup"
+                        className="inline-flex border border-red-500/45 bg-red-500 px-5 py-3 text-[11px] uppercase tracking-[0.24em] text-black transition hover:bg-red-400"
+                      >
+                        Start building
+                      </Link>
+                      <Link
+                        to="/pricing"
+                        className="inline-flex border border-white/15 bg-white/[0.04] px-5 py-3 text-[11px] uppercase tracking-[0.24em] text-white transition hover:bg-white/[0.07]"
+                      >
+                        Review monetization
+                      </Link>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="border border-white/10 bg-white/[0.03]">
+                <div className="border-b border-white/10 px-4 py-3 text-[11px] uppercase tracking-[0.28em] text-white/45">
+                  Launch protocol
+                </div>
+                <div className="grid gap-px bg-white/10">
+                  {tenexConfig.workflow.nextActions.map((item, index) => (
+                    <div key={item} className="bg-black px-4 py-4">
+                      <p className="text-[10px] uppercase tracking-[0.24em] text-red-300">Step 0{index + 1}</p>
+                      <p className="mt-3 text-sm leading-6 text-white/75">{item}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <aside className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+            <article className="border border-white/10 bg-white/[0.03]">
+              <div className="border-b border-white/10 px-4 py-3 text-[11px] uppercase tracking-[0.3em] text-red-300">
+                Signal strip
+              </div>
+              <div className="grid gap-px bg-white/10">
+                {tenexConfig.dashboard.metrics.map((metric) => (
+                  <div key={metric.label} className="bg-black px-4 py-4">
+                    <p className="text-[10px] uppercase tracking-[0.24em] text-white/45">{metric.label}</p>
+                    <p className="mt-3 text-3xl text-white">{metric.value}</p>
+                    <p className="mt-2 text-sm leading-6 text-white/55">{metric.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </article>
+
+            <article className="border border-white/10 bg-white/[0.03] p-4 sm:p-6">
+              <p className="text-[11px] uppercase tracking-[0.35em] text-red-300">Interface contract</p>
+              <h2 className="mt-3 text-2xl text-white">{tenexConfig.brand.name}</h2>
+              <p className="mt-3 text-sm leading-7 text-white/60">{tenexConfig.brand.tagline}</p>
+              <div className="mt-6 grid gap-3">
+                {[
+                  'Black / red / white system tied to the original Tenex voice.',
+                  'Monospace-first layout blocks that stay legible on small screens.',
+                  'Founder surfaces for setup, pricing, onboarding, and admin without redesign drift.',
+                ].map((item) => (
+                  <Link
+                    key={item}
+                    to={isAuthenticated ? '/dashboard' : '/signup'}
+                    className="block border border-white/10 bg-black/60 px-4 py-4 text-sm leading-6 text-white/70 transition hover:border-red-500/25"
+                  >
+                    {item}
+                  </Link>
+                ))}
+              </div>
+            </article>
+          </aside>
         </section>
       </main>
     </div>
@@ -454,70 +526,87 @@ function Dashboard() {
       title={tenexConfig.dashboard.title}
       description={tenexConfig.dashboard.summary}
     >
-      <section className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-orange-200">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+        <article className="border border-red-500/25 bg-black/85">
+          <div className="border-b border-red-500/20 px-4 py-4 sm:px-6">
+            <p className="text-[11px] uppercase tracking-[0.35em] text-red-300">
             Workspace owner
-          </p>
-          <h2 className="mt-4 text-3xl font-semibold text-white">{user.name}</h2>
-          <p className="mt-3 text-base text-white/60">{user.email}</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            {tenexConfig.dashboard.milestones.map((milestone) => (
-              <span
-                key={milestone}
-                className="rounded-full border border-orange-300/20 bg-orange-400/10 px-4 py-2 text-sm text-orange-100"
-              >
-                {milestone}
-              </span>
-            ))}
+            </p>
           </div>
-        </div>
+          <div className="grid gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.7fr)]">
+            <div>
+              <h2 className="text-3xl text-white sm:text-4xl">{user.name}</h2>
+              <p className="mt-3 text-sm leading-7 text-white/60 sm:text-base">{user.email}</p>
+              <div className="mt-6 flex flex-wrap gap-2">
+                {tenexConfig.dashboard.milestones.map((milestone) => (
+                  <span
+                    key={milestone}
+                    className="inline-flex border border-red-500/25 bg-red-500/10 px-3 py-2 text-[11px] uppercase tracking-[0.22em] text-red-100"
+                  >
+                    {milestone}
+                  </span>
+                ))}
+              </div>
+            </div>
 
-        <div className="rounded-[2rem] border border-white/10 bg-black/30 p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/50">
-            Primary surface
-          </p>
-          <h2 className="mt-4 text-2xl font-semibold text-white">
-            {tenexConfig.workflow.primarySurface}
-          </h2>
-          <div className="mt-6 space-y-3">
+            <div className="border border-white/10 bg-white/[0.03]">
+              <div className="border-b border-white/10 px-4 py-3 text-[11px] uppercase tracking-[0.28em] text-white/45">
+                Primary surface
+              </div>
+              <div className="px-4 py-4">
+                <h3 className="text-lg text-white">{tenexConfig.workflow.primarySurface}</h3>
+                <p className="mt-3 text-sm leading-6 text-white/55">
+                  Keep the founder workflow narrow, explicit, and instrumented before widening the product surface.
+                </p>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article className="border border-white/10 bg-white/[0.03]">
+          <div className="border-b border-white/10 px-4 py-4 sm:px-6">
+            <p className="text-[11px] uppercase tracking-[0.35em] text-red-300">Next actions</p>
+          </div>
+          <div className="grid gap-px bg-white/10">
             {tenexConfig.workflow.nextActions.map((item) => (
-              <div key={item} className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-white/72">
-                {item}
+              <div key={item} className="bg-black px-4 py-4 sm:px-6">
+                <p className="text-sm leading-7 text-white/72">{item}</p>
               </div>
             ))}
           </div>
-        </div>
+        </article>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {tenexConfig.dashboard.metrics.map((metric) => (
           <article
             key={metric.label}
-            className="rounded-[1.75rem] border border-white/10 bg-black/20 p-6"
+            className="border border-white/10 bg-white/[0.03] p-5 sm:p-6"
           >
-            <p className="text-sm uppercase tracking-[0.24em] text-white/45">{metric.label}</p>
-            <p className="mt-4 text-3xl font-semibold text-white">{metric.value}</p>
-            <p className="mt-2 text-sm leading-6 text-white/65">{metric.detail}</p>
+            <p className="text-[11px] uppercase tracking-[0.28em] text-white/45">{metric.label}</p>
+            <p className="mt-4 text-4xl text-white">{metric.value}</p>
+            <p className="mt-3 text-sm leading-7 text-white/60">{metric.detail}</p>
           </article>
         ))}
       </section>
 
       <section>
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="text-2xl font-semibold text-white">Enabled launch systems</h2>
-          <p className="text-sm text-white/50">Driven directly from tenex.json</p>
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-2xl text-white">Enabled launch systems</h2>
+          <p className="text-[11px] uppercase tracking-[0.24em] text-white/45">
+            Driven directly from tenex.json
+          </p>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {addonCards.map((addon) => (
-            <article key={addon.label} className="rounded-[1.5rem] border border-white/10 bg-white/5 p-6">
-              <p className="text-sm uppercase tracking-[0.24em] text-orange-200">
+            <article key={addon.label} className="border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+              <p className="text-[11px] uppercase tracking-[0.28em] text-red-300">
                 {addon.label}
               </p>
-              <p className="mt-4 text-lg font-semibold text-white">
+              <p className="mt-4 text-lg text-white">
                 {addon.enabled ? addon.provider : 'Disabled'}
               </p>
-              <p className="mt-2 text-sm leading-6 text-white/60">
+              <p className="mt-3 text-sm leading-7 text-white/60">
                 {addon.enabled
                   ? 'Scaffolded into the app shell and ready for provider credentials.'
                   : 'Can be enabled later with tenex add.'}
@@ -552,18 +641,35 @@ function Onboarding() {
       title="Launch onboarding"
       description="Turn the generated scaffold into a founder-ready product in a single pass."
     >
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)]">
+        <article className="border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+          <p className="text-[11px] uppercase tracking-[0.35em] text-red-300">Operating note</p>
+          <h2 className="mt-3 text-2xl text-white">Keep onboarding brutally specific</h2>
+          <p className="mt-4 text-sm leading-7 text-white/60">
+            Replace these generated tasks with your real activation sequence, expected user artifacts, and the exact moments that prove product value.
+          </p>
+          <div className="mt-6 grid gap-3">
+            {tenexConfig.dashboard.milestones.map((milestone) => (
+              <div key={milestone} className="border border-white/10 bg-black/60 px-4 py-3 text-sm text-white/72">
+                {milestone}
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <div className="grid gap-4">
         {tenexConfig.workflow.nextActions.map((item, index) => (
-          <article key={item} className="rounded-[1.75rem] border border-white/10 bg-white/5 p-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-orange-200">
-              Step {index + 1}
-            </p>
-            <p className="mt-4 text-xl font-semibold text-white">{item}</p>
-            <p className="mt-3 text-sm leading-6 text-white/60">
+            <article key={item} className="border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+              <p className="text-[11px] uppercase tracking-[0.32em] text-red-300">
+                Step 0{index + 1}
+              </p>
+              <p className="mt-4 text-xl text-white">{item}</p>
+              <p className="mt-3 text-sm leading-7 text-white/60">
               This route is intentionally product-facing. Replace the checklist copy with real onboarding tasks for your business.
-            </p>
-          </article>
+              </p>
+            </article>
         ))}
+        </div>
       </section>
     </AppShell>
   )
@@ -593,28 +699,41 @@ function Settings() {
       title="Workspace settings"
       description="Keep provider choices, operational surfaces, and launch metadata visible in-product."
     >
-      <section className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
-        <article className="rounded-[2rem] border border-white/10 bg-black/30 p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/45">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,0.78fr)_minmax(0,1.22fr)]">
+        <article className="border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+          <p className="text-[11px] uppercase tracking-[0.35em] text-red-300">
             Template
           </p>
-          <h2 className="mt-4 text-3xl font-semibold text-white">{tenexConfig.template}</h2>
-          <p className="mt-3 text-sm leading-6 text-white/60">
+          <h2 className="mt-4 text-3xl text-white">{tenexConfig.template}</h2>
+          <p className="mt-3 text-sm leading-7 text-white/60">
             Package manager: {tenexConfig.packageManager}
           </p>
+          <div className="mt-6 grid gap-3">
+            <div className="border border-white/10 bg-black/60 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-white/45">Brand line</p>
+              <p className="mt-3 text-sm text-white/75">{tenexConfig.brand.tagline}</p>
+            </div>
+            <div className="border border-white/10 bg-black/60 px-4 py-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-white/45">Primary surface</p>
+              <p className="mt-3 text-sm text-white/75">{tenexConfig.workflow.primarySurface}</p>
+            </div>
+          </div>
         </article>
-        <article className="rounded-[2rem] border border-white/10 bg-white/5 p-8">
-          <h2 className="text-2xl font-semibold text-white">Addon map</h2>
-          <div className="mt-6 divide-y divide-white/10">
+        <article className="border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-2xl text-white">Addon map</h2>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-white/45">Scaffold contract</p>
+          </div>
+          <div className="mt-6 grid gap-3">
             {addonRows.map(([key, addon]) => (
-              <div key={key} className="flex items-center justify-between py-4">
+              <div key={key} className="grid gap-3 border border-white/10 bg-black/60 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                 <div>
-                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/55">
+                  <p className="text-[11px] uppercase tracking-[0.24em] text-white/45">
                     {key}
                   </p>
-                  <p className="mt-1 text-sm text-white/55">{addon.label}</p>
+                  <p className="mt-2 text-sm text-white/65">{addon.label}</p>
                 </div>
-                <span className="rounded-full border border-white/10 bg-black/20 px-4 py-2 text-sm text-white/75">
+                <span className="inline-flex w-fit border border-white/15 bg-white/[0.05] px-3 py-2 text-[11px] uppercase tracking-[0.24em] text-white/75">
                   {addon.enabled ? addon.provider : 'none'}
                 </span>
               </div>
@@ -663,26 +782,43 @@ function Pricing() {
             detail: 'High-touch plan with usage, support, and admin controls.',
           },
         ].map((tier) => (
-          <article key={tier.name} className="rounded-[1.75rem] border border-white/10 bg-white/5 p-6">
-            <p className="text-sm uppercase tracking-[0.24em] text-orange-200">{tier.name}</p>
-            <p className="mt-4 text-4xl font-semibold text-white">{tier.price}</p>
-            <p className="mt-3 text-sm leading-6 text-white/60">{tier.detail}</p>
+          <article key={tier.name} className="border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-red-300">{tier.name}</p>
+            <p className="mt-4 text-4xl text-white">{tier.price}</p>
+            <p className="mt-3 text-sm leading-7 text-white/60">{tier.detail}</p>
           </article>
         ))}
       </section>
 
-      <section className="rounded-[2rem] border border-white/10 bg-black/30 p-8">
-        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-white/45">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)]">
+        <article className="border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+          <p className="text-[11px] uppercase tracking-[0.35em] text-red-300">
           Billing provider
-        </p>
-        <h2 className="mt-4 text-3xl font-semibold text-white">
-          {billing.enabled ? billing.label : 'Not enabled yet'}
-        </h2>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-white/60">
-          {billing.enabled
-            ? 'Hook this page into the generated billing facade for checkout, entitlement checks, and customer portal access.'
-            : 'Enable billing with tenex add billing to turn this into a live monetization surface.'}
-        </p>
+          </p>
+          <h2 className="mt-4 text-3xl text-white">
+            {billing.enabled ? billing.label : 'Not enabled yet'}
+          </h2>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-white/60">
+            {billing.enabled
+              ? 'Hook this page into the generated billing facade for checkout, entitlement checks, and customer portal access.'
+              : 'Enable billing with tenex add billing to turn this into a live monetization surface.'}
+          </p>
+        </article>
+
+        <article className="border border-white/10 bg-white/[0.03] p-5 sm:p-6">
+          <p className="text-[11px] uppercase tracking-[0.35em] text-red-300">Monetization notes</p>
+          <div className="mt-4 grid gap-3">
+            {[
+              'Keep upgrade moments attached to real usage pressure.',
+              'Show plan deltas in plain language before the checkout call.',
+              'Use the admin surface to review billing state before support work.',
+            ].map((item) => (
+              <div key={item} className="border border-white/10 bg-black/60 px-4 py-4 text-sm leading-6 text-white/70">
+                {item}
+              </div>
+            ))}
+          </div>
+        </article>
       </section>
     </AppShell>
   )
