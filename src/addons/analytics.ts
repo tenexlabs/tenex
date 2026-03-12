@@ -26,11 +26,17 @@ export async function applyAnalyticsAddon(
 }
 
 function analyticsStubSource(): string {
-  return `export async function captureTenexEvent() {
+  return `export async function captureTenexEvent(
+  _event?: string,
+  _properties?: Record<string, unknown>,
+) {
   return undefined
 }
 
-export async function identifyTenexUser() {
+export async function identifyTenexUser(
+  _userId?: string,
+  _properties?: Record<string, unknown>,
+) {
   return undefined
 }
 `;
