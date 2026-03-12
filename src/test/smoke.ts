@@ -143,6 +143,40 @@ async function testAuthAddonCanOverwriteFreshStarterFiles() {
   }
 }
 
+async function testAnalyticsStubMatchesGeneratedCallsites() {
+  const projectDir = await makeTempProject();
+
+  try {
+    const manifest = createTenexManifest({
+      admin: 'none',
+      analytics: 'none',
+      billing: 'none',
+      email: 'none',
+      packageManager: 'npm',
+      projectName: 'signal-lab',
+      storage: 'none',
+      teams: 'none',
+      template: 'saas-core',
+    });
+
+    await applyManifestAddons(projectDir, manifest);
+
+    const analytics = await readTextFile(
+      join(projectDir, 'src', 'lib', 'analytics.ts')
+    );
+    assert(
+      analytics.includes('_event?: string'),
+      'analytics stub should accept the same event args as the real provider'
+    );
+    assert(
+      analytics.includes('_userId?: string'),
+      'analytics stub should accept the same identify args as the real provider'
+    );
+  } finally {
+    await removeDir(projectDir);
+  }
+}
+
 async function testFounderTemplateScaffold() {
   const projectDir = await makeTempProject();
 
@@ -184,8 +218,14 @@ async function testFounderTemplateScaffold() {
     const convexConfig = await readTextFile(
       join(projectDir, 'convex', 'convex.config.ts')
     );
+    const convexSchema = await readTextFile(
+      join(projectDir, 'convex', 'schema.ts')
+    );
     const localBetterAuthConfig = await readTextFile(
       join(projectDir, 'convex', 'betterAuth', 'convex.config.ts')
+    );
+    const convexAdmin = await readTextFile(
+      join(projectDir, 'convex', 'admin.ts')
     );
     assert(
       convexConfig.includes('@convex-dev/stripe/convex.config'),
@@ -204,6 +244,16 @@ async function testFounderTemplateScaffold() {
       'teams and admin addons should switch to the local Better Auth install'
     );
     assert(
+      convexSchema.includes('tenex_admin_workspace') &&
+        convexSchema.includes('tenex_admin_activity'),
+      'admin addon should register its Convex tables in schema.ts'
+    );
+    assert(
+      convexAdmin.includes('...defaultBootstrapState') &&
+        convexAdmin.includes('await ctx.db.insert(WORKSPACE_TABLE, {'),
+      'admin addon should seed bootstrap fields when inserting workspace config'
+    );
+    assert(
       !localBetterAuthConfig.includes('component.use('),
       'local Better Auth component config should match the Convex docs'
     );
@@ -213,6 +263,15 @@ async function testFounderTemplateScaffold() {
     );
     const localAuthConfig = await readTextFile(
       join(projectDir, 'convex', 'betterAuth', 'auth.ts')
+    );
+    const authClient = await readTextFile(
+      join(projectDir, 'src', 'lib', 'auth-client.ts')
+    );
+    const rootRoute = await readTextFile(
+      join(projectDir, 'src', 'routes', '__root.tsx')
+    );
+    const setupAdminRoute = await readTextFile(
+      join(projectDir, 'src', 'routes', 'setup-admin.tsx')
     );
     const localAdapter = await readTextFile(
       join(projectDir, 'convex', 'betterAuth', 'adapter.ts')
@@ -225,6 +284,30 @@ async function testFounderTemplateScaffold() {
           "import { admin, organization } from 'better-auth/plugins'"
         ),
       'teams and admin addons should extend Better Auth plugins'
+    );
+    assert(
+      authClient.includes(
+        "import { adminClient } from 'better-auth/client/plugins'"
+      ),
+      'generated auth client should include the Better Auth admin client plugin'
+    );
+    assert(
+      authClient.includes('plugins: [adminClient(), convexClient()]'),
+      'generated auth client should register the admin client plugin'
+    );
+    assert(
+      rootRoute.includes(
+        "import { AdminBootstrapGate } from '~/components/AdminBootstrapGate'"
+      ),
+      'admin addon should patch the root route to import AdminBootstrapGate'
+    );
+    assert(
+      rootRoute.includes('<AdminBootstrapGate>'),
+      'admin addon should wrap the root outlet with AdminBootstrapGate'
+    );
+    assert(
+      setupAdminRoute.includes('waitForAuthenticatedBootstrapUser'),
+      'admin bootstrap route should wait for Convex auth state before promoting the first admin'
     );
     assert(
       localAuthConfig.includes('export const auth = createAuth({} as any)'),
@@ -240,6 +323,20 @@ async function testFounderTemplateScaffold() {
     assert(
       await pathExists(join(projectDir, 'src', 'routes', 'admin.tsx')),
       'admin route should be generated'
+    );
+    assert(
+      await pathExists(join(projectDir, 'src', 'routes', 'setup-admin.tsx')),
+      'admin addon should generate the setup-admin bootstrap route'
+    );
+    assert(
+      await pathExists(
+        join(projectDir, 'src', 'components', 'AdminBootstrapGate.tsx')
+      ),
+      'admin addon should generate the bootstrap gate component'
+    );
+    assert(
+      await pathExists(join(projectDir, 'convex', 'admin.ts')),
+      'admin addon should generate root Convex admin functions'
     );
     assert(
       await pathExists(join(projectDir, 'src', 'routes', 'files.tsx')),
@@ -266,6 +363,7 @@ async function main() {
   await testAuthAddonPreservesExistingFiles();
   await testAuthAddonScaffoldIsIdempotent();
   await testAuthAddonCanOverwriteFreshStarterFiles();
+  await testAnalyticsStubMatchesGeneratedCallsites();
   await testFounderTemplateScaffold();
 
   console.log('smoke test ok');
