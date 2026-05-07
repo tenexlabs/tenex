@@ -2,6 +2,10 @@
 
 Status: Backlog
 
+Priority: P1
+
+Type: test
+
 Owner: Agent
 
 Created: 2026-05-07

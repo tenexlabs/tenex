@@ -2,6 +2,10 @@
 
 Status: Backlog
 
+Priority: P0
+
+Type: infra
+
 Owner: Agent
 
 Created: 2026-05-07
