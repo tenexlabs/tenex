@@ -1,22 +1,60 @@
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { applyAnalyticsAddon } from '../addons/analytics';
 import {
   applyAuthAddon,
   BETTER_AUTH_VERSION,
   generateBetterAuthSecret,
 } from '../addons/auth';
 import { applyBetterAuthLocalInstall } from '../addons/better-auth-local';
-import { applyManifestAddons } from '../addons/catalog';
+import { applyBillingAddon } from '../addons/billing';
+import { addonPackages, applyManifestAddons } from '../addons/catalog';
+import { applyEmailAddon } from '../addons/email';
+import { applyStorageAddon } from '../addons/storage';
+import { applyTeamsAddon } from '../addons/teams';
+import { hasFlag, parseArgs, readFlag, readStringFlag } from '../lib/args';
 import { pathExists, readTextFile, removeDir, writeTextFile } from '../lib/fs';
 import { sanitizeProjectName } from '../lib/project-name';
-import { createTenexManifest } from '../lib/tenex-config';
+import { addonEnvRequirements, createTenexManifest } from '../lib/tenex-config';
 import { applyTemplate } from '../templates';
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function assertIncludes(
+  contents: string,
+  expected: string,
+  message: string
+): void {
+  assert(contents.includes(expected), message);
+}
+
+function assertNotIncludes(
+  contents: string,
+  expected: string,
+  message: string
+): void {
+  assert(!contents.includes(expected), message);
+}
+
+function assertArrayIncludes(
+  values: string[],
+  expected: string,
+  message: string
+): void {
+  assert(values.includes(expected), message);
+}
+
+function assertArrayExcludes(
+  values: string[],
+  expected: string,
+  message: string
+): void {
+  assert(!values.includes(expected), message);
 }
 
 async function makeTempProject(): Promise<string> {
@@ -47,6 +85,110 @@ async function makeTempProject(): Promise<string> {
   );
 
   return projectDir;
+}
+
+function makeManifest(
+  overrides: Partial<Parameters<typeof createTenexManifest>[0]> = {}
+) {
+  return createTenexManifest({
+    admin: 'none',
+    analytics: 'none',
+    billing: 'none',
+    email: 'none',
+    packageManager: 'npm',
+    projectName: 'signal-lab',
+    storage: 'none',
+    teams: 'none',
+    template: 'saas-core',
+    ...overrides,
+  });
+}
+
+async function makeAuthProject(): Promise<string> {
+  const projectDir = await makeTempProject();
+  await applyAuthAddon(projectDir);
+  return projectDir;
+}
+
+function packageNamesFor(
+  overrides: Partial<Parameters<typeof createTenexManifest>[0]>
+): string[] {
+  return addonPackages(makeManifest(overrides)).map((pkg) => pkg.name);
+}
+
+function envRequirementsFor(
+  overrides: Partial<Parameters<typeof createTenexManifest>[0]>
+): string[] {
+  return addonEnvRequirements(makeManifest(overrides));
+}
+
+function testCommandParserNonInteractiveOptions() {
+  const parsed = parseArgs([
+    'Acme Portal',
+    '--yes',
+    '--package-manager=pnpm',
+    '--template',
+    'ai-saas',
+    '--billing=stripe',
+    '--storage',
+    'r2',
+    '--email',
+    '--analytics=none',
+    '--teams=organization',
+    '--admin',
+    'none',
+  ]);
+
+  assert(
+    parsed.positional[0] === 'Acme Portal',
+    'parser should preserve the project name positional argument'
+  );
+  assert(hasFlag(parsed, 'yes'), 'parser should expand --yes as a boolean');
+  assert(
+    readStringFlag(parsed, 'package-manager') === 'pnpm',
+    'parser should read --package-manager=value'
+  );
+  assert(
+    readStringFlag(parsed, 'template') === 'ai-saas',
+    'parser should read --template value'
+  );
+  assert(
+    readStringFlag(parsed, 'billing') === 'stripe',
+    'parser should read --billing=value'
+  );
+  assert(
+    readStringFlag(parsed, 'storage') === 'r2',
+    'parser should read --storage value'
+  );
+  assert(
+    readFlag(parsed, 'email') === true,
+    'parser should read fixed add-on booleans'
+  );
+  assert(
+    readStringFlag(parsed, 'analytics') === 'none',
+    'parser should read fixed add-on string values'
+  );
+  assert(
+    readStringFlag(parsed, 'admin') === 'none',
+    'parser should keep a fixed add-on disabled value'
+  );
+
+  const shortAndTerminated = parseArgs([
+    '-y',
+    '--pm',
+    'bun',
+    '--',
+    '--literal',
+  ]);
+  assert(hasFlag(shortAndTerminated, 'yes'), 'parser should map -y to --yes');
+  assert(
+    readStringFlag(shortAndTerminated, 'pm') === 'bun',
+    'parser should read --pm value'
+  );
+  assert(
+    shortAndTerminated.positional[0] === '--literal',
+    'parser should treat tokens after -- as positional values'
+  );
 }
 
 async function testAuthAddonPreservesExistingFiles() {
@@ -175,6 +317,353 @@ async function testAnalyticsStubMatchesGeneratedCallsites() {
   } finally {
     await removeDir(projectDir);
   }
+}
+
+async function testBillingProviderScaffoldsAndMetadata() {
+  const cases = [
+    {
+      provider: 'stripe' as const,
+      componentImport: '@convex-dev/stripe/convex.config',
+      componentUse: 'app.use(stripe)',
+      expectedEnv: 'STRIPE_SECRET_KEY',
+      expectedPackage: '@convex-dev/stripe',
+      unexpectedEnv: 'AUTUMN_SECRET_KEY',
+      unexpectedPackage: '@useautumn/convex',
+    },
+    {
+      provider: 'autumn' as const,
+      componentImport: '@useautumn/convex/convex.config',
+      componentUse: 'app.use(autumn)',
+      expectedEnv: 'AUTUMN_SECRET_KEY',
+      expectedPackage: '@useautumn/convex',
+      unexpectedEnv: 'STRIPE_SECRET_KEY',
+      unexpectedPackage: '@convex-dev/stripe',
+    },
+  ];
+
+  for (const testCase of cases) {
+    const projectDir = await makeAuthProject();
+
+    try {
+      await applyBillingAddon(projectDir, testCase.provider);
+
+      const convexConfig = await readTextFile(
+        join(projectDir, 'convex', 'convex.config.ts')
+      );
+      const billingServer = await readTextFile(
+        join(projectDir, 'convex', 'billing.ts')
+      );
+      const billingClient = await readTextFile(
+        join(projectDir, 'src', 'lib', 'billing.ts')
+      );
+      const billingWebhook = await readTextFile(
+        join(projectDir, 'src', 'routes', 'api', 'billing', '$.ts')
+      );
+      const packages = packageNamesFor({ billing: testCase.provider });
+      const env = envRequirementsFor({ billing: testCase.provider });
+
+      assertIncludes(
+        convexConfig,
+        testCase.componentImport,
+        `${testCase.provider} billing should register its Convex component import`
+      );
+      assertIncludes(
+        convexConfig,
+        testCase.componentUse,
+        `${testCase.provider} billing should register its Convex component use`
+      );
+      assertIncludes(
+        billingServer,
+        `billingProvider = "${testCase.provider}" as const`,
+        `${testCase.provider} billing server should expose provider metadata`
+      );
+      assertIncludes(
+        billingClient,
+        `billingProvider = "${testCase.provider}" as const`,
+        `${testCase.provider} billing client should expose provider metadata`
+      );
+      assertIncludes(
+        billingWebhook,
+        `provider: "${testCase.provider}"`,
+        `${testCase.provider} billing webhook should expose provider metadata`
+      );
+      assertArrayIncludes(
+        packages,
+        testCase.expectedPackage,
+        `${testCase.provider} billing should request its provider package`
+      );
+      assertArrayExcludes(
+        packages,
+        testCase.unexpectedPackage,
+        `${testCase.provider} billing should not request the other provider package`
+      );
+      assertArrayIncludes(
+        env,
+        testCase.expectedEnv,
+        `${testCase.provider} billing should require its provider env vars`
+      );
+      assertArrayExcludes(
+        env,
+        testCase.unexpectedEnv,
+        `${testCase.provider} billing should not require the other provider env vars`
+      );
+    } finally {
+      await removeDir(projectDir);
+    }
+  }
+}
+
+async function testEmailAnalyticsAndTeamsProviderScaffoldsAndMetadata() {
+  const projectDir = await makeAuthProject();
+
+  try {
+    await applyEmailAddon(projectDir, 'resend');
+    await applyTeamsAddon(projectDir, 'organization');
+
+    const analyticsProjectDir = await makeTempProject();
+    try {
+      await applyAnalyticsAddon(analyticsProjectDir, 'posthog');
+
+      const emailServer = await readTextFile(
+        join(projectDir, 'convex', 'email.ts')
+      );
+      const emailClient = await readTextFile(
+        join(projectDir, 'src', 'lib', 'email.ts')
+      );
+      const emailTemplates = await readTextFile(
+        join(projectDir, 'src', 'emails', 'transactional.ts')
+      );
+      const authConfig = await readTextFile(
+        join(projectDir, 'convex', 'auth.ts')
+      );
+      const teamsClient = await readTextFile(
+        join(projectDir, 'src', 'lib', 'teams.ts')
+      );
+      const analyticsClient = await readTextFile(
+        join(analyticsProjectDir, 'src', 'lib', 'analytics.ts')
+      );
+      const providerPackages = packageNamesFor({
+        analytics: 'posthog',
+        email: 'resend',
+        teams: 'organization',
+      });
+      const disabledPackages = packageNamesFor({
+        analytics: 'none',
+        email: 'none',
+        teams: 'none',
+      });
+      const providerEnv = envRequirementsFor({
+        admin: 'panel',
+        analytics: 'posthog',
+        email: 'resend',
+        teams: 'organization',
+      });
+
+      assertIncludes(
+        emailServer,
+        "provider: 'resend'",
+        'email provider should generate Resend server metadata'
+      );
+      assertIncludes(
+        emailClient,
+        "provider: 'resend'",
+        'email provider should generate Resend client metadata'
+      );
+      assertIncludes(
+        emailTemplates,
+        'verificationTemplate',
+        'email provider should generate transactional templates'
+      );
+      assertIncludes(
+        analyticsClient,
+        "import posthog from 'posthog-js'",
+        'analytics provider should generate PostHog client integration'
+      );
+      assertIncludes(
+        analyticsClient,
+        'posthog.identify(userId, properties)',
+        'analytics provider should generate PostHog identify calls'
+      );
+      assertIncludes(
+        authConfig,
+        "import { organization } from 'better-auth/plugins'",
+        'teams provider should import the Better Auth organization plugin'
+      );
+      assertIncludes(
+        authConfig,
+        'organization(), convex({ authConfig })',
+        'teams provider should register the Better Auth organization plugin'
+      );
+      assertIncludes(
+        teamsClient,
+        "provider: 'organization'",
+        'teams provider should generate organization client metadata'
+      );
+      assertArrayIncludes(
+        providerPackages,
+        'resend',
+        'email provider should request the Resend runtime package'
+      );
+      assertArrayIncludes(
+        providerPackages,
+        'posthog-js',
+        'analytics provider should request the PostHog browser package'
+      );
+      assertArrayIncludes(
+        providerPackages,
+        'posthog-node',
+        'analytics provider should request the PostHog server package'
+      );
+      assert(
+        disabledPackages.length === 0,
+        'disabled add-ons should not request provider packages'
+      );
+      assertArrayIncludes(
+        providerEnv,
+        'RESEND_API_KEY',
+        'email provider should require Resend env vars'
+      );
+      assertArrayIncludes(
+        providerEnv,
+        'VITE_POSTHOG_KEY',
+        'analytics provider should require PostHog env vars'
+      );
+      assertArrayIncludes(
+        providerEnv,
+        'TENEX_ADMIN_EMAILS',
+        'admin provider should require bootstrap admin env vars'
+      );
+    } finally {
+      await removeDir(analyticsProjectDir);
+    }
+  } finally {
+    await removeDir(projectDir);
+  }
+}
+
+async function testStorageProviderScaffoldsAndMetadata() {
+  const cases = [
+    {
+      provider: 'convex' as const,
+      expectedRouteLabel: 'Convex file storage',
+      expectedPackage: undefined,
+      expectedEnv: undefined,
+      shouldRegisterComponent: false,
+    },
+    {
+      provider: 'r2' as const,
+      expectedRouteLabel: 'Cloudflare R2 component',
+      expectedPackage: '@convex-dev/r2',
+      expectedEnv: 'R2_BUCKET',
+      shouldRegisterComponent: true,
+    },
+  ];
+
+  for (const testCase of cases) {
+    const projectDir = await makeAuthProject();
+
+    try {
+      await applyStorageAddon(projectDir, testCase.provider);
+
+      const convexConfig = await readTextFile(
+        join(projectDir, 'convex', 'convex.config.ts')
+      );
+      const storageServer = await readTextFile(
+        join(projectDir, 'convex', 'storage.ts')
+      );
+      const storageClient = await readTextFile(
+        join(projectDir, 'src', 'lib', 'storage.ts')
+      );
+      const filesRoute = await readTextFile(
+        join(projectDir, 'src', 'routes', 'files.tsx')
+      );
+      const packages = packageNamesFor({ storage: testCase.provider });
+      const env = envRequirementsFor({ storage: testCase.provider });
+
+      assertIncludes(
+        storageServer,
+        `storageProvider = "${testCase.provider}" as const`,
+        `${testCase.provider} storage server should expose provider metadata`
+      );
+      assertIncludes(
+        storageClient,
+        `storageProvider = "${testCase.provider}" as const`,
+        `${testCase.provider} storage client should expose provider metadata`
+      );
+      assertIncludes(
+        filesRoute,
+        testCase.expectedRouteLabel,
+        `${testCase.provider} storage route should render provider-specific copy`
+      );
+
+      if (testCase.shouldRegisterComponent) {
+        assertIncludes(
+          convexConfig,
+          '@convex-dev/r2/convex.config',
+          'R2 storage should register the Convex R2 component import'
+        );
+        assertIncludes(
+          convexConfig,
+          'app.use(r2)',
+          'R2 storage should register the Convex R2 component use'
+        );
+      } else {
+        assertNotIncludes(
+          convexConfig,
+          '@convex-dev/r2/convex.config',
+          'Convex storage should not register the R2 component import'
+        );
+      }
+
+      if (testCase.expectedPackage) {
+        assertArrayIncludes(
+          packages,
+          testCase.expectedPackage,
+          `${testCase.provider} storage should request its provider package`
+        );
+      } else {
+        assert(
+          packages.length === 0,
+          'Convex storage should not request provider packages'
+        );
+      }
+
+      if (testCase.expectedEnv) {
+        assertArrayIncludes(
+          env,
+          testCase.expectedEnv,
+          `${testCase.provider} storage should require provider env vars`
+        );
+      } else {
+        assertArrayExcludes(
+          env,
+          'R2_BUCKET',
+          'Convex storage should not require R2 env vars'
+        );
+      }
+    } finally {
+      await removeDir(projectDir);
+    }
+  }
+}
+
+function testAddonPackageMetadataDeduplicatesProviders() {
+  const manifest = makeManifest({
+    analytics: 'posthog',
+    billing: 'stripe',
+    email: 'resend',
+    storage: 'r2',
+  });
+  const packages = addonPackages(manifest);
+  const packageKeys = packages.map(
+    (pkg) => `${pkg.name}:${pkg.dev ? 'dev' : 'runtime'}`
+  );
+  const uniquePackageKeys = new Set(packageKeys);
+
+  assert(
+    packageKeys.length === uniquePackageKeys.size,
+    'addon package metadata should deduplicate package manager inputs'
+  );
 }
 
 async function testFounderTemplateScaffold() {
@@ -360,10 +849,16 @@ async function main() {
     'Bad secret generation'
   );
 
+  testCommandParserNonInteractiveOptions();
+  testAddonPackageMetadataDeduplicatesProviders();
+
   await testAuthAddonPreservesExistingFiles();
   await testAuthAddonScaffoldIsIdempotent();
   await testAuthAddonCanOverwriteFreshStarterFiles();
   await testAnalyticsStubMatchesGeneratedCallsites();
+  await testBillingProviderScaffoldsAndMetadata();
+  await testEmailAnalyticsAndTeamsProviderScaffoldsAndMetadata();
+  await testStorageProviderScaffoldsAndMetadata();
   await testFounderTemplateScaffold();
 
   console.log('smoke test ok');
