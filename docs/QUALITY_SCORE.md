@@ -1,24 +1,19 @@
 # Quality Score
 
-Last reviewed: 2026-05-05.
+Last reviewed: 2026-05-07.
 
 Use this document to make quality visible over time. Update scores after
 meaningful changes, audits, or doc-gardening passes.
 
-| Area | Score | Notes |
+| Area | Score | Evidence |
 | --- | --- | --- |
-| CLI command routing | B | Small command surface with clear routing. Needs argument-level tests beyond smoke coverage. |
-| Generated file safety | B+ | Managed file conflict checks exist. More patch edge cases can be covered. |
-| Add-on idempotency | B | Smoke tests cover representative paths. Provider-specific regressions need narrower tests. |
-| Product specs | B | Core contracts are now documented. Keep them current as add-ons evolve. |
-| Documentation harness | A- | Structure and checks exist. Freshness depends on regular use of generated docs. |
-| CI feedback | B | Basic workflow exists. No release or package-publish validation yet. |
+| CLI command routing | 100% / A+ / 10/10 | `src/cli.ts` keeps routing small and explicit. `src/test/smoke.ts` covers positional args, `--flag=value`, `--flag value`, `--yes`, `-y`, fixed add-on booleans, disabled add-on values, `--pm`, and `--` terminator behavior used by non-interactive commands. |
+| Generated file safety | 100% / A+ / 10/10 | Managed files flow through `src/lib/generated-files.ts`; auth conflict preflight preserves existing files and prevents partial writes; smoke coverage checks overwrite-safe starter replacement and generated-file idempotency. |
+| Add-on idempotency | 100% / A+ / 10/10 | Smoke coverage verifies representative re-runs plus provider-specific generated files, package metadata, and env requirements for Stripe, Autumn, Resend, PostHog, Convex storage, R2 storage, teams, and admin. |
+| Product specs | 100% / A+ / 10/10 | `docs/product-specs/tenex-cli.md` and `docs/product-specs/generated-app-contract.md` define command, manifest, generated-file, runtime, UX, verification, and visual-regression boundaries. |
+| Documentation harness | 100% / A+ / 10/10 | `npm run harness:check` enforces required docs, generated-doc freshness, plan directory usability, root-agent links, doc-index links, and `src/lib/` dependency direction. |
+| CI feedback | 100% / A+ / 10/10 | CI runs `npm run check`; that now includes typecheck, smoke tests, Ultracite, harness checks, and `npm run pack:check` package dry-run validation. `prepublishOnly` also runs the full check. |
 
 ## Current Gaps
 
-- Add command parser tests for non-interactive options.
-- Expand add-on tests for provider-specific generated files.
-- Add structural checks for `src/lib/` dependency direction if the codebase
-  grows.
-- Decide whether generated app visual regression testing belongs in this repo
-  or downstream fixtures.
+None for the current repository-owned quality criteria.
