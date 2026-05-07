@@ -18,8 +18,24 @@ Use lowercase kebab-case filenames:
 
 - `active/add-provider-health-checks.md`
 - `todo/expand-addon-tests.md`
-- `backlog/support-additional-ai-providers.md`
+- `backlog/p1-feat-support-additional-ai-providers.md`
 - `completed/scaffold-harness-docs.md`
+
+Backlog plans should start with priority and type prefixes:
+
+- `p0-`: security, correctness, or release-blocking work.
+- `p1-`: foundational near-term work.
+- `p2-`: major product expansion or operational maturity.
+- `p3-`: later-stage breadth, polish, or optional ecosystem work.
+
+Use the type prefix after the priority:
+
+- `feat-`: new product, CLI, generated-app, or add-on capability.
+- `fix-`: correctness, security, reliability, or lifecycle fix.
+- `test-`: verification, fixture, or coverage work.
+- `dx-`: user, maintainer, or agent workflow improvement.
+- `infra-`: packaging, release, deployment, migration, or extension
+  infrastructure.
 
 ## Required Sections
 
