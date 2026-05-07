@@ -2,7 +2,7 @@
 
 Status: Backlog
 
-Priority: P2
+Priority: P1
 
 Type: feat
 

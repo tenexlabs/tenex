@@ -2,7 +2,7 @@
 
 Status: Backlog
 
-Priority: P3
+Priority: P2
 
 Type: dx
 
