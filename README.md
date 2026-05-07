@@ -108,4 +108,9 @@ Tenex writes:
 npm run build
 npm test
 npm exec -- ultracite check
+npm run harness:check
+npm run docs:generate
 ```
+
+For agent-oriented repository guidance, start with `AGENTS.md` and
+`docs/README.md`.
