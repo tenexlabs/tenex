@@ -28,3 +28,16 @@ edit, and extend.
 
 Changes to templates or add-ons should include smoke coverage that reads the
 generated files and checks for the expected integration points.
+
+## Visual Regression Boundary
+
+Tenex does not keep browser screenshot baselines in the core CLI repository.
+This repository owns deterministic checks that can run without provider
+credentials: TypeScript contracts, source smoke assertions, generated-doc
+freshness, harness structure, and package dry-run validation.
+
+Visual regression testing belongs in downstream generated-app fixture suites.
+Those suites can install a packaged Tenex CLI, create representative apps, run
+the TanStack Start and Convex dev servers, and compare rendered browser states
+with stable fixture assets. Pull visual regression into this repository only if
+those fixture apps become a maintained local test target.

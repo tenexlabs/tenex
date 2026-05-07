@@ -32,7 +32,10 @@ Audit findings:
   and founder UI, but there is no fixture that compiles representative generated
   apps.
 - Existing docs already call out the unresolved question of generated-app visual
-  regression testing.
+  regression testing. The current repository boundary is now documented in
+  `docs/product-specs/generated-app-contract.md`: visual regression belongs in
+  downstream generated-app fixture suites unless those fixtures become a
+  maintained local target.
 
 ## Acceptance Criteria
 
@@ -43,8 +46,8 @@ Audit findings:
   billing, email, analytics, and teams source generation together.
 - The test strategy is documented, including what is intentionally not covered
   because it requires external Convex/provider services.
-- Optional visual checks are evaluated and either added or explicitly deferred
-  with rationale.
+- Optional visual checks follow the documented downstream-fixture boundary, or
+  this plan records why the boundary changed.
 
 ## Steps
 
@@ -61,6 +64,9 @@ Audit findings:
 
 - 2026-05-07: Keep this in backlog as a quality investment because the current
   smoke test passes but cannot prove generated apps compile or render.
+- 2026-05-07: Keep browser screenshot baselines out of the core CLI repository
+  until generated app fixtures are maintained locally; put visual regression in
+  downstream fixtures that run packaged Tenex output.
 
 ## Verification
 

@@ -28,11 +28,11 @@ focused regression tests.
 
 Audit findings:
 
-- `src/test/smoke.ts` covers representative generated output but not command
-  parser edge cases, invalid `tenex add` providers, package-manager command
-  rendering, doctor/deploy behavior, or many add-on ordering permutations.
-- `docs/QUALITY_SCORE.md` already flags parser and provider-specific regression
-  gaps; the code audit confirmed those gaps still matter.
+- `src/test/smoke.ts` now covers the non-interactive parser forms and
+  provider-specific generated output that previously blocked the quality score.
+- Remaining backlog scope is broader than the current scorecard: invalid
+  provider handling, package-manager command rendering, doctor/deploy behavior,
+  and deeper add-on ordering permutations.
 
 ## Acceptance Criteria
 
@@ -62,6 +62,9 @@ Audit findings:
 
 - 2026-05-07: Keep this as a broad testing plan because several other backlog
   tasks need the same harness improvements.
+- 2026-05-07: Parser and provider-specific smoke coverage are no longer
+  quality-score gaps; keep this plan for a future focused test runner and wider
+  command/package-manager matrix.
 
 ## Verification
 
@@ -72,5 +75,6 @@ Audit findings:
 
 ## Handoff
 
-No code was changed for this backlog item during the audit. This is an enabler
-for safely fixing the more specific backlog items.
+The quality-score-blocking parser and provider assertions landed in
+`src/test/smoke.ts`. The remaining plan is an enabler for broader command and
+package-manager regression coverage.
