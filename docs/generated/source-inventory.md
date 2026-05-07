@@ -2,9 +2,9 @@
 
 # Source Inventory
 
-Files outside ignored directories: 109
+Files outside ignored directories: 141
 
-Markdown docs: 63
+Markdown docs: 95
 
 Source files: 31
 
@@ -20,7 +20,7 @@ Source files: 31
 | `AGENTS.md` | 1 |
 | `ARCHITECTURE.md` | 1 |
 | `biome.jsonc` | 1 |
-| `docs` | 62 |
+| `docs` | 94 |
 | `LICENSE` | 1 |
 | `package-lock.json` | 1 |
 | `package.json` | 1 |
