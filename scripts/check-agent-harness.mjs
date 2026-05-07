@@ -81,6 +81,8 @@ const REQUIRED_DOC_INDEX_LINKS = [
   'reviews/',
 ];
 
+const LIB_LAYER_DIR = 'src/lib';
+
 const pathExists = async (path) => {
   try {
     await stat(path);
@@ -91,6 +93,27 @@ const pathExists = async (path) => {
     }
     throw error;
   }
+};
+
+const listFilesUnder = async (relativeDir) => {
+  const absoluteDir = join(repoRoot, relativeDir);
+  const entries = await readdir(absoluteDir, { withFileTypes: true });
+  const files = [];
+
+  for (const entry of entries.toSorted((left, right) =>
+    left.name.localeCompare(right.name)
+  )) {
+    const relativePath = `${relativeDir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      files.push(...(await listFilesUnder(relativePath)));
+      continue;
+    }
+    if (entry.isFile()) {
+      files.push(relativePath);
+    }
+  }
+
+  return files;
 };
 
 const assertDirectory = async (relativePath, errors) => {
@@ -138,6 +161,42 @@ const assertIncludes = (contents, expectedValues, filePath, errors) => {
   for (const expectedValue of expectedValues) {
     if (!contents.includes(expectedValue)) {
       errors.push(`${filePath} must reference ${expectedValue}.`);
+    }
+  }
+};
+
+const extractModuleSpecifiers = (contents) => {
+  const specifiers = [];
+  const importExportRegex =
+    /(?:import|export)\s+(?:type\s+)?[\s\S]*?\sfrom\s+['"]([^'"]+)['"]/g;
+  const sideEffectImportRegex = /import\s+['"]([^'"]+)['"]/g;
+
+  for (const match of contents.matchAll(importExportRegex)) {
+    specifiers.push(match[1]);
+  }
+
+  for (const match of contents.matchAll(sideEffectImportRegex)) {
+    specifiers.push(match[1]);
+  }
+
+  return specifiers;
+};
+
+const assertLibDependencyDirection = async (errors) => {
+  const libFiles = (await listFilesUnder(LIB_LAYER_DIR)).filter((file) =>
+    file.endsWith('.ts')
+  );
+
+  for (const relativePath of libFiles) {
+    const contents = await readFile(join(repoRoot, relativePath), 'utf8');
+    const specifiers = extractModuleSpecifiers(contents);
+
+    for (const specifier of specifiers) {
+      if (specifier.startsWith('../') || specifier.startsWith('~/')) {
+        errors.push(
+          `${relativePath} imports ${specifier}; src/lib may only depend on sibling lib helpers or external modules.`
+        );
+      }
     }
   }
 };
@@ -202,6 +261,7 @@ const main = async () => {
     errors
   );
 
+  await assertLibDependencyDirection(errors);
   await assertPlanDirectoriesAreUsable(errors);
   await assertGeneratedDocsFresh(errors);
 
