@@ -23,14 +23,15 @@ Binary: `tenex -> ./dist/cli.js`
 
 | Script | Command |
 | --- | --- |
-| `build` | `tsc -p tsconfig.json` |
-| `check` | `npm run typecheck && npm test && npm exec -- ultracite check && npm run harness:check` |
+| `build` | `node scripts/clean-dist.mjs && tsc -p tsconfig.json` |
+| `check` | `npm run typecheck && npm test && npm exec -- ultracite check && npm run harness:check && npm run pack:check` |
 | `docs:generate` | `node scripts/update-generated-docs.mjs` |
 | `fix` | `npm exec -- ultracite fix` |
 | `harness:check` | `node scripts/check-agent-harness.mjs` |
+| `pack:check` | `npm run build && npm pack --dry-run --cache /tmp/tenex-npm-cache` |
 | `typecheck` | `tsc -p tsconfig.json` |
 | `test` | `npm run build && node ./dist/test/smoke.js` |
-| `prepublishOnly` | `npm run build` |
+| `prepublishOnly` | `npm run check` |
 
 ## Runtime Dependencies
 

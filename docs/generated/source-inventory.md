@@ -2,9 +2,9 @@
 
 # Source Inventory
 
-Files outside ignored directories: 141
+Files outside ignored directories: 143
 
-Markdown docs: 95
+Markdown docs: 96
 
 Source files: 31
 
@@ -20,12 +20,12 @@ Source files: 31
 | `AGENTS.md` | 1 |
 | `ARCHITECTURE.md` | 1 |
 | `biome.jsonc` | 1 |
-| `docs` | 94 |
+| `docs` | 95 |
 | `LICENSE` | 1 |
 | `package-lock.json` | 1 |
 | `package.json` | 1 |
 | `README.md` | 1 |
-| `scripts` | 2 |
+| `scripts` | 3 |
 | `src` | 31 |
 | `tsconfig.json` | 1 |
 
@@ -63,4 +63,4 @@ Source files: 31
 | `src/lib/run.ts` | 33 |
 | `src/lib/tenex-config.ts` | 139 |
 | `src/templates.ts` | 985 |
-| `src/test/smoke.ts` | 375 |
+| `src/test/smoke.ts` | 870 |
